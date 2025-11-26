@@ -37,10 +37,13 @@ ehthumbs.db
 Thumbs.db
 
 # Database
-*.sql
 *.db
 *.sqlite
 *.sqlite3
+
+# SQL files (except migrations)
+!database/migrations/*.sql
+!database/seeds/*.sql
 
 # Build
 dist/
