@@ -3,6 +3,8 @@ const evolutionClient = require('../services/evolution/client');
 const logger = require('../utils/logger');
 const TemplateEngine = require('../services/templateEngine');
 const WarmupStrategy = require('../services/warmup/strategy');
+const duplicateDetector = require('../services/duplicateDetector');
+const contentAnalyzer = require('../services/contentAnalyzer');
 
 /**
  * Messages Controller
@@ -386,6 +388,49 @@ async function sendMessage(req, res) {
       });
     }
 
+    // ANTI-SPAM CHECK 0a: Content Analysis
+    const contentCheck = contentAnalyzer.analyzeContent(finalMessageText);
+    if (contentCheck.isSpam) {
+      await client.query('ROLLBACK');
+      await logSpamEvent(campaign.consultant_id, 'SPAM_CONTENT', {
+        spam_score: contentCheck.score,
+        details: contentCheck.details,
+        campaignId
+      });
+
+      return res.status(400).json({
+        success: false,
+        error: 'Mesaj spam içeriği tespit edildi',
+        spamAnalysis: {
+          score: contentCheck.score,
+          riskLevel: contentCheck.riskLevel,
+          details: contentCheck.details,
+          recommendation: contentCheck.recommendation
+        }
+      });
+    }
+
+    // ANTI-SPAM CHECK 0b: Duplicate Message Detection
+    const duplicateCheck = await duplicateDetector.checkDuplicate(campaign.consultant_id, finalMessageText);
+    if (duplicateCheck.isDuplicate) {
+      await client.query('ROLLBACK');
+      await logSpamEvent(campaign.consultant_id, 'DUPLICATE_MESSAGE', {
+        message_hash: duplicateCheck.messageHash,
+        count: duplicateCheck.count,
+        limit: duplicateCheck.limit,
+        campaignId
+      });
+
+      return res.status(429).json({
+        success: false,
+        error: duplicateCheck.reason,
+        duplicateInfo: {
+          count: duplicateCheck.count,
+          limit: duplicateCheck.limit
+        }
+      });
+    }
+
     // ANTI-SPAM CHECK 1: Check spam risk score
     if (campaign.spam_risk_score >= ANTI_SPAM_RULES.MAX_SPAM_SCORE) {
       await client.query('ROLLBACK');
@@ -521,14 +566,23 @@ async function sendMessage(req, res) {
       }
     }
 
+    // Generate message hash for duplicate tracking
+    const messageHash = duplicateDetector.generateMessageHash(finalMessageText);
+
     // Insert message record
     const insertQuery = `
-      INSERT INTO messages (campaign_id, contact_id, message_text, status)
-      VALUES ($1, $2, $3, 'pending')
+      INSERT INTO messages (campaign_id, contact_id, message_text, status, message_hash, content_spam_score)
+      VALUES ($1, $2, $3, 'pending', $4, $5)
       RETURNING id, created_at
     `;
 
-    const insertResult = await client.query(insertQuery, [campaignId, contactId, finalMessageText]);
+    const insertResult = await client.query(insertQuery, [
+      campaignId,
+      contactId,
+      finalMessageText,
+      messageHash,
+      contentCheck.score
+    ]);
     const messageId = insertResult.rows[0].id;
 
     await client.query('COMMIT');

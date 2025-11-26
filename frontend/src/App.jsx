@@ -20,6 +20,7 @@ import Admin from './pages/Admin';
 
 // Components
 import ProtectedRoute from './components/common/ProtectedRoute';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Store
 import useAuthStore from './store/authStore';
@@ -62,10 +63,11 @@ function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <BrowserRouter>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider theme={theme}>
+          <CssBaseline />
+          <BrowserRouter>
           <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
@@ -176,8 +178,9 @@ function App() {
           },
         }}
         />
-      </ThemeProvider>
-    </QueryClientProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

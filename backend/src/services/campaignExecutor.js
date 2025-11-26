@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const evolutionClient = require('./evolution/client');
 const TemplateEngine = require('./templateEngine');
 const WarmupStrategy = require('./warmup/strategy');
+const openaiClient = require('./openai/client');
 
 /**
  * Campaign Executor Service
@@ -72,6 +73,7 @@ class CampaignExecutor {
         SELECT
           c.id, c.consultant_id, c.name, c.message_template,
           c.template_id, c.total_recipients, c.sent_count,
+          c.use_ai_variations,
           cons.instance_name, cons.status as consultant_status,
           cons.connected_at, cons.daily_limit
         FROM campaigns c
@@ -199,6 +201,25 @@ class CampaignExecutor {
           });
         } catch (renderError) {
           logger.warn(`[CampaignExecutor] Template render failed: ${renderError.message}`);
+        }
+      }
+
+      // Apply AI variations if enabled
+      if (campaign.use_ai_variations && openaiClient.isEnabled()) {
+        try {
+          logger.info(`[CampaignExecutor] Generating AI variation for campaign ${campaign.id}`);
+          const variationResult = await openaiClient.generateVariation(messageText, {
+            tone: 'professional',
+            preserveMeaning: true
+          });
+
+          if (variationResult.success && variationResult.variation) {
+            messageText = variationResult.variation;
+            logger.info(`[CampaignExecutor] AI variation applied successfully`);
+          }
+        } catch (aiError) {
+          logger.warn(`[CampaignExecutor] AI variation failed, using original: ${aiError.message}`);
+          // Continue with original message if AI fails
         }
       }
 

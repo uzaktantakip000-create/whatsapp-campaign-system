@@ -19,6 +19,9 @@ const PORT = process.env.BACKEND_PORT || 3000;
 // Campaign Executor Service
 const campaignExecutor = require('./src/services/campaignExecutor');
 
+// Scheduler Service (for cron jobs like spam decay)
+const scheduler = require('./src/services/scheduler');
+
 // ============================================
 // MIDDLEWARE
 // ============================================
@@ -176,6 +179,11 @@ const startServer = async () => {
       logger.info('[Server] Starting campaign executor...');
       campaignExecutor.start();
       logger.info('[Server] Campaign executor started successfully');
+
+      // Start scheduler (cron jobs)
+      logger.info('[Server] Starting scheduler service...');
+      scheduler.start();
+      logger.info('[Server] Scheduler service started successfully');
     });
   } catch (error) {
     logger.logError(error, 'Server Startup');
@@ -187,6 +195,7 @@ const startServer = async () => {
 process.on('SIGTERM', async () => {
   logger.info('[Server] SIGTERM received. Shutting down gracefully...');
   campaignExecutor.stop();
+  scheduler.stop();
   await db.close();
   process.exit(0);
 });
@@ -194,6 +203,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logger.info('[Server] SIGINT received. Shutting down gracefully...');
   campaignExecutor.stop();
+  scheduler.stop();
   await db.close();
   process.exit(0);
 });
