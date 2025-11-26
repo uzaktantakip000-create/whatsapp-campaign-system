@@ -6,6 +6,20 @@ const logger = require('../utils/logger');
  * Handles all business logic for campaign management
  */
 
+// Allowed sort columns for SQL injection prevention
+const ALLOWED_CAMPAIGN_SORT_COLUMNS = ['id', 'name', 'status', 'created_at', 'updated_at', 'started_at', 'completed_at', 'sent_count', 'delivered_count'];
+const ALLOWED_MESSAGE_SORT_COLUMNS = ['id', 'status', 'created_at', 'sent_at', 'delivered_at', 'read_at'];
+const ALLOWED_ORDER_VALUES = ['asc', 'desc'];
+
+/**
+ * Validate and sanitize sort parameters
+ */
+function validateSortParams(sort, order, allowedColumns) {
+  const safeSort = allowedColumns.includes(sort) ? sort : allowedColumns[0];
+  const safeOrder = ALLOWED_ORDER_VALUES.includes(order?.toLowerCase()) ? order.toLowerCase() : 'desc';
+  return { safeSort, safeOrder };
+}
+
 // ==========================================
 // GET ALL CAMPAIGNS
 // ==========================================
@@ -17,7 +31,11 @@ const logger = require('../utils/logger');
 async function getAllCampaigns(req, res) {
   try {
     const { page = 1, limit = 20, consultantId, status, search, sort = 'created_at', order = 'desc' } = req.query;
-    const offset = (page - 1) * limit;
+    const offset = (Math.max(1, parseInt(page)) - 1) * Math.min(100, Math.max(1, parseInt(limit)));
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit)));
+
+    // Validate sort parameters to prevent SQL injection
+    const { safeSort, safeOrder } = validateSortParams(sort, order, ALLOWED_CAMPAIGN_SORT_COLUMNS);
 
     // Build query
     let whereClause = [];
@@ -61,10 +79,10 @@ async function getAllCampaigns(req, res) {
       FROM campaigns c
       INNER JOIN consultants co ON c.consultant_id = co.id
       ${whereSQL}
-      ORDER BY c.${sort} ${order}
+      ORDER BY c.${safeSort} ${safeOrder}
       LIMIT $${paramCount} OFFSET $${paramCount + 1}
     `;
-    params.push(limit, offset);
+    params.push(safeLimit, offset);
 
     const result = await db.query(dataQuery, params);
 

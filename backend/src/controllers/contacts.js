@@ -9,6 +9,16 @@ const fs = require('fs');
  * Handles all business logic for contact management
  */
 
+// Allowed sort columns for SQL injection prevention
+const ALLOWED_SORT_COLUMNS = ['id', 'name', 'number', 'segment', 'created_at', 'updated_at', 'last_message_time', 'message_count'];
+const ALLOWED_ORDER_VALUES = ['asc', 'desc'];
+
+function validateSortParams(sort, order) {
+  const safeSort = ALLOWED_SORT_COLUMNS.includes(sort) ? sort : 'created_at';
+  const safeOrder = ALLOWED_ORDER_VALUES.includes(order?.toLowerCase()) ? order.toLowerCase() : 'desc';
+  return { safeSort, safeOrder };
+}
+
 // ==========================================
 // GET ALL CONTACTS
 // ==========================================
@@ -28,7 +38,10 @@ async function getAllContacts(req, res) {
       order = 'desc'
     } = req.query;
 
-    const offset = (page - 1) * limit;
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const offset = (safePage - 1) * safeLimit;
+    const { safeSort, safeOrder } = validateSortParams(sort, order);
 
     // Build query
     let whereClause = [];
@@ -74,10 +87,10 @@ async function getAllContacts(req, res) {
       FROM contacts c
       INNER JOIN consultants cons ON c.consultant_id = cons.id
       ${whereSQL}
-      ORDER BY c.${sort} ${order}
+      ORDER BY c.${safeSort} ${safeOrder}
       LIMIT $${paramCount} OFFSET $${paramCount + 1}
     `;
-    params.push(limit, offset);
+    params.push(safeLimit, offset);
 
     const result = await db.query(dataQuery, params);
 

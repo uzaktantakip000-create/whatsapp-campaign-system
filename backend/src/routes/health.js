@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 const deliveryMonitor = require('../services/deliveryMonitor');
 const engagementTracker = require('../services/engagementTracker');
 const blockDetector = require('../services/blockDetector');
@@ -21,7 +21,7 @@ const logger = require('../utils/logger');
  *       200:
  *         description: Account health report
  */
-router.get('/account', authenticateToken, async (req, res) => {
+router.get('/account', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const health = await deliveryMonitor.getAccountHealth(consultantId);
@@ -57,7 +57,7 @@ router.get('/account', authenticateToken, async (req, res) => {
  *           default: 24
  *         description: Hours to look back
  */
-router.get('/delivery-stats', authenticateToken, async (req, res) => {
+router.get('/delivery-stats', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const hours = parseInt(req.query.hours) || 24;
@@ -88,7 +88,7 @@ router.get('/delivery-stats', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/delivery-trends', authenticateToken, async (req, res) => {
+router.get('/delivery-trends', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const days = parseInt(req.query.days) || 7;
@@ -119,7 +119,7 @@ router.get('/delivery-trends', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/engagement', authenticateToken, async (req, res) => {
+router.get('/engagement', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const stats = await engagementTracker.getEngagementStats(consultantId);
@@ -148,7 +148,7 @@ router.get('/engagement', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/prioritized-contacts', authenticateToken, async (req, res) => {
+router.get('/prioritized-contacts', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const { segment, minScore, limit } = req.query;
@@ -184,7 +184,7 @@ router.get('/prioritized-contacts', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/block-history', authenticateToken, async (req, res) => {
+router.get('/block-history', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const days = parseInt(req.query.days) || 30;
@@ -216,7 +216,7 @@ router.get('/block-history', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/spam-history', authenticateToken, async (req, res) => {
+router.get('/spam-history', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const days = parseInt(req.query.days) || 30;
@@ -248,7 +248,7 @@ router.get('/spam-history', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/validation-stats', authenticateToken, async (req, res) => {
+router.get('/validation-stats', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const stats = await numberValidator.getValidationStats(consultantId);
@@ -277,7 +277,7 @@ router.get('/validation-stats', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.post('/validate-contacts', authenticateToken, async (req, res) => {
+router.post('/validate-contacts', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const instanceName = req.user.instanceName;
@@ -315,7 +315,7 @@ router.post('/validate-contacts', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/optimal-time/:contactId', authenticateToken, async (req, res) => {
+router.get('/optimal-time/:contactId', requireAuth, async (req, res) => {
   try {
     const { contactId } = req.params;
     const optimal = await smartScheduler.getOptimalSendTime(parseInt(contactId));
@@ -344,7 +344,7 @@ router.get('/optimal-time/:contactId', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/should-send-now', authenticateToken, async (req, res) => {
+router.get('/should-send-now', requireAuth, async (req, res) => {
   try {
     const contactId = req.query.contactId ? parseInt(req.query.contactId) : null;
     const recommendation = await smartScheduler.shouldSendNow(contactId);
@@ -373,7 +373,7 @@ router.get('/should-send-now', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/activity-heatmap', authenticateToken, async (req, res) => {
+router.get('/activity-heatmap', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const heatmap = await smartScheduler.getActivityHeatmap(consultantId);
@@ -402,7 +402,7 @@ router.get('/activity-heatmap', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.post('/recalculate-engagement', authenticateToken, async (req, res) => {
+router.post('/recalculate-engagement', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
     const result = await engagementTracker.recalculateAllScores(consultantId);
@@ -431,7 +431,7 @@ router.post('/recalculate-engagement', authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/dashboard', authenticateToken, async (req, res) => {
+router.get('/dashboard', requireAuth, async (req, res) => {
   try {
     const consultantId = req.user.id;
 

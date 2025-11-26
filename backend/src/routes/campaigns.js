@@ -3,10 +3,12 @@ const router = express.Router();
 const campaignsController = require('../controllers/campaigns');
 const { createCampaignSchema, updateCampaignSchema, campaignQuerySchema } = require('../validators/schemas');
 const { validateBody, validateQuery, validateParams } = require('../middleware/validator');
+const { requireAuth } = require('../middleware/auth');
 
 /**
  * Campaigns Routes
  * All routes for campaign management
+ * All routes require authentication
  */
 
 // ==========================================
@@ -15,6 +17,7 @@ const { validateBody, validateQuery, validateParams } = require('../middleware/v
 // ==========================================
 router.get(
   '/',
+  requireAuth,
   validateQuery(campaignQuerySchema),
   campaignsController.getAllCampaigns
 );
@@ -25,6 +28,7 @@ router.get(
 // ==========================================
 router.get(
   '/:id',
+  requireAuth,
   validateParams('id'),
   campaignsController.getCampaignById
 );
@@ -35,6 +39,7 @@ router.get(
 // ==========================================
 router.post(
   '/',
+  requireAuth,
   validateBody(createCampaignSchema),
   campaignsController.createCampaign
 );
@@ -45,6 +50,7 @@ router.post(
 // ==========================================
 router.put(
   '/:id',
+  requireAuth,
   validateParams('id'),
   validateBody(updateCampaignSchema),
   campaignsController.updateCampaign
@@ -56,6 +62,7 @@ router.put(
 // ==========================================
 router.delete(
   '/:id',
+  requireAuth,
   validateParams('id'),
   campaignsController.deleteCampaign
 );
@@ -66,6 +73,7 @@ router.delete(
 // ==========================================
 router.post(
   '/:id/start',
+  requireAuth,
   validateParams('id'),
   campaignsController.startCampaign
 );
@@ -76,6 +84,7 @@ router.post(
 // ==========================================
 router.post(
   '/:id/pause',
+  requireAuth,
   validateParams('id'),
   campaignsController.pauseCampaign
 );
@@ -86,6 +95,7 @@ router.post(
 // ==========================================
 router.post(
   '/:id/recipients',
+  requireAuth,
   validateParams('id'),
   campaignsController.addRecipients
 );
@@ -96,6 +106,7 @@ router.post(
 // ==========================================
 router.get(
   '/:id/recipients',
+  requireAuth,
   validateParams('id'),
   campaignsController.getCampaignRecipients
 );
@@ -106,6 +117,7 @@ router.get(
 // ==========================================
 router.delete(
   '/:id/recipients/:contactId',
+  requireAuth,
   validateParams('id'),
   validateParams('contactId'),
   campaignsController.removeRecipient

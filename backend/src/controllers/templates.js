@@ -7,6 +7,16 @@ const TemplateEngine = require('../services/templateEngine');
  * Handles all business logic for message template management
  */
 
+// Allowed sort columns for SQL injection prevention
+const ALLOWED_SORT_COLUMNS = ['id', 'name', 'category', 'created_at', 'updated_at', 'usage_count', 'is_active'];
+const ALLOWED_ORDER_VALUES = ['asc', 'desc'];
+
+function validateSortParams(sort, order) {
+  const safeSort = ALLOWED_SORT_COLUMNS.includes(sort) ? sort : 'created_at';
+  const safeOrder = ALLOWED_ORDER_VALUES.includes(order?.toLowerCase()) ? order.toLowerCase() : 'desc';
+  return { safeSort, safeOrder };
+}
+
 // ==========================================
 // GET ALL TEMPLATES
 // ==========================================
@@ -28,7 +38,10 @@ async function getAllTemplates(req, res) {
       order = 'desc'
     } = req.query;
 
-    const offset = (page - 1) * limit;
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const offset = (safePage - 1) * safeLimit;
+    const { safeSort, safeOrder } = validateSortParams(sort, order);
 
     // Build query
     let whereClause = [];
@@ -73,10 +86,10 @@ async function getAllTemplates(req, res) {
         variables, is_active, usage_count, created_at, updated_at
       FROM message_templates
       ${whereSQL}
-      ORDER BY ${sort} ${order}
+      ORDER BY ${safeSort} ${safeOrder}
       LIMIT $${paramCount} OFFSET $${paramCount + 1}
     `;
-    params.push(limit, offset);
+    params.push(safeLimit, offset);
 
     const result = await db.query(dataQuery, params);
 

@@ -49,7 +49,7 @@ import { format } from 'date-fns';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { toast } from 'react-toastify';
+import { toast } from 'react-hot-toast';
 import MainLayout from '../components/layout/MainLayout';
 import campaignsAPI from '../api/campaigns';
 import templatesAPI from '../api/templates';

@@ -11,10 +11,12 @@ const {
   improveTemplateSchema
 } = require('../validators/schemas');
 const { validateBody, validateQuery, validateParams } = require('../middleware/validator');
+const { requireAuth } = require('../middleware/auth');
 
 /**
  * Templates Routes
  * All routes for message template management
+ * All routes require authentication
  */
 
 // ==========================================
@@ -23,6 +25,7 @@ const { validateBody, validateQuery, validateParams } = require('../middleware/v
 // ==========================================
 router.get(
   '/',
+  requireAuth,
   validateQuery(templateQuerySchema),
   templatesController.getAllTemplates
 );
@@ -33,6 +36,7 @@ router.get(
 // ==========================================
 router.get(
   '/:id',
+  requireAuth,
   validateParams('id'),
   templatesController.getTemplateById
 );
@@ -43,6 +47,7 @@ router.get(
 // ==========================================
 router.post(
   '/',
+  requireAuth,
   validateBody(createTemplateSchema),
   templatesController.createTemplate
 );
@@ -53,6 +58,7 @@ router.post(
 // ==========================================
 router.put(
   '/:id',
+  requireAuth,
   validateParams('id'),
   validateBody(updateTemplateSchema),
   templatesController.updateTemplate
@@ -64,6 +70,7 @@ router.put(
 // ==========================================
 router.delete(
   '/:id',
+  requireAuth,
   validateParams('id'),
   templatesController.deleteTemplate
 );
@@ -74,6 +81,7 @@ router.delete(
 // ==========================================
 router.post(
   '/:id/preview',
+  requireAuth,
   validateParams('id'),
   validateBody(previewTemplateSchema),
   templatesController.previewTemplate
@@ -85,6 +93,7 @@ router.post(
 // ==========================================
 router.post(
   '/:id/render',
+  requireAuth,
   validateParams('id'),
   validateBody(renderTemplateSchema),
   templatesController.renderTemplate
@@ -96,6 +105,7 @@ router.post(
 // ==========================================
 router.post(
   '/:id/generate-variations',
+  requireAuth,
   validateParams('id'),
   validateBody(generateVariationsSchema),
   templatesController.generateVariations
@@ -107,6 +117,7 @@ router.post(
 // ==========================================
 router.post(
   '/:id/improve',
+  requireAuth,
   validateParams('id'),
   validateBody(improveTemplateSchema),
   templatesController.improveTemplate

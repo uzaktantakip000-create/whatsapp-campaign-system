@@ -37,17 +37,6 @@ router.get(
 );
 
 // ==========================================
-// GET /api/contacts/:id
-// Get contact by ID
-// ==========================================
-router.get(
-  '/:id',
-  requireAuth,
-  validateParams('id'),
-  contactsController.getContactById
-);
-
-// ==========================================
 // POST /api/contacts
 // Create new contact
 // ==========================================
@@ -68,6 +57,18 @@ router.post(
   requireAuth,
   upload.single('file'),
   contactsController.importContacts
+);
+
+// ==========================================
+// GET /api/contacts/:id
+// Get contact by ID
+// (Parameterized route - must come AFTER specific routes)
+// ==========================================
+router.get(
+  '/:id',
+  requireAuth,
+  validateParams('id'),
+  contactsController.getContactById
 );
 
 /**

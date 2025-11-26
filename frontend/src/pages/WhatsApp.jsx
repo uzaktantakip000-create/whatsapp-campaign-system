@@ -28,7 +28,7 @@ import {
 import { format } from 'date-fns';
 import MainLayout from '../components/layout/MainLayout';
 import whatsappAPI from '../api/whatsapp';
-import { toast } from 'react-toastify';
+import { toast } from 'react-hot-toast';
 
 function WhatsApp() {
   const queryClient = useQueryClient();

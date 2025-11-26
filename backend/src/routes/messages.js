@@ -3,10 +3,12 @@ const router = express.Router();
 const messagesController = require('../controllers/messages');
 const { sendMessageSchema, messageQuerySchema } = require('../validators/schemas');
 const { validateBody, validateQuery, validateParams } = require('../middleware/validator');
+const { requireAuth } = require('../middleware/auth');
 
 /**
  * Messages Routes
  * All routes for message management
+ * All routes require authentication
  */
 
 // ==========================================
@@ -15,6 +17,7 @@ const { validateBody, validateQuery, validateParams } = require('../middleware/v
 // ==========================================
 router.get(
   '/',
+  requireAuth,
   validateQuery(messageQuerySchema),
   messagesController.getAllMessages
 );
@@ -25,6 +28,7 @@ router.get(
 // ==========================================
 router.get(
   '/stats',
+  requireAuth,
   messagesController.getMessageStats
 );
 
@@ -34,6 +38,7 @@ router.get(
 // ==========================================
 router.get(
   '/:id',
+  requireAuth,
   validateParams('id'),
   messagesController.getMessageById
 );
@@ -44,6 +49,7 @@ router.get(
 // ==========================================
 router.post(
   '/send',
+  requireAuth,
   validateBody(sendMessageSchema),
   messagesController.sendMessage
 );

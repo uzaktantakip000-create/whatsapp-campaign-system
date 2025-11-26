@@ -25,6 +25,16 @@ const ANTI_SPAM_RULES = {
   MAX_SPAM_SCORE: 70
 };
 
+// Allowed sort columns for SQL injection prevention
+const ALLOWED_SORT_COLUMNS = ['id', 'status', 'created_at', 'sent_at', 'delivered_at', 'read_at'];
+const ALLOWED_ORDER_VALUES = ['asc', 'desc'];
+
+function validateSortParams(sort, order) {
+  const safeSort = ALLOWED_SORT_COLUMNS.includes(sort) ? sort : 'created_at';
+  const safeOrder = ALLOWED_ORDER_VALUES.includes(order?.toLowerCase()) ? order.toLowerCase() : 'desc';
+  return { safeSort, safeOrder };
+}
+
 // ==========================================
 // GET ALL MESSAGES
 // ==========================================
@@ -47,7 +57,10 @@ async function getAllMessages(req, res) {
       order = 'desc'
     } = req.query;
 
-    const offset = (page - 1) * limit;
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const offset = (safePage - 1) * safeLimit;
+    const { safeSort, safeOrder } = validateSortParams(sort, order);
 
     // Build query
     let whereClause = [];
@@ -102,10 +115,10 @@ async function getAllMessages(req, res) {
       INNER JOIN campaigns c ON m.campaign_id = c.id
       INNER JOIN contacts co ON m.contact_id = co.id
       ${whereSQL}
-      ORDER BY m.${sort} ${order}
+      ORDER BY m.${safeSort} ${safeOrder}
       LIMIT $${paramCount} OFFSET $${paramCount + 1}
     `;
-    params.push(limit, offset);
+    params.push(safeLimit, offset);
 
     const result = await db.query(dataQuery, params);
 

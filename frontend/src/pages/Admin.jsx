@@ -391,7 +391,7 @@ function Admin() {
                             <Switch
                               checked={consultant.isActive}
                               onChange={() => handleToggleStatus(consultant)}
-                              disabled={updateStatusMutation.isLoading}
+                              disabled={updateStatusMutation.isPending}
                             />
                           }
                           label={consultant.isActive ? 'Active' : 'Inactive'}
