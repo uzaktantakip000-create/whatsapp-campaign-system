@@ -1,6 +1,8 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const { syncContacts } = require('../services/contactSync');
+const engagementTracker = require('../services/engagementTracker');
+const blockDetector = require('../services/blockDetector');
 
 /**
  * Webhook Controller
@@ -251,12 +253,45 @@ async function handleMessageUpsert(event) {
           WHERE number = $1
         `;
       } else {
+        // Incoming message - this is a REPLY!
         updateQuery = `
           UPDATE contacts
           SET last_message_time = CURRENT_TIMESTAMP,
               message_count = COALESCE(message_count, 0) + 1
           WHERE number = $1
         `;
+
+        // Process as reply for engagement tracking
+        try {
+          // Find consultant for this instance
+          const consultantQuery = `
+            SELECT c.id FROM consultants c
+            WHERE c.instance_name = $1
+          `;
+          const consultantResult = await db.query(consultantQuery, [instanceName]);
+
+          if (consultantResult.rows.length > 0) {
+            const consultantId = consultantResult.rows[0].id;
+
+            // Extract message text
+            const messageText = message.message?.conversation ||
+                               message.message?.extendedTextMessage?.text ||
+                               '[Media/Other]';
+
+            // Process reply with engagement tracker
+            await engagementTracker.processReply(
+              consultantId,
+              phoneNumber,
+              messageText,
+              { instanceName, timestamp: new Date().toISOString() }
+            );
+
+            logger.info(`[Webhook] Reply processed for engagement tracking: ${phoneNumber}`);
+          }
+        } catch (engagementError) {
+          logger.error(`[Webhook] Engagement tracking error: ${engagementError.message}`);
+          // Continue even if engagement tracking fails
+        }
       }
 
       const updateResult = await db.query(updateQuery, [phoneNumber]);
