@@ -16,6 +16,9 @@ const db = require('./src/config/database');
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3000;
 
+// Campaign Executor Service
+const campaignExecutor = require('./src/services/campaignExecutor');
+
 // ============================================
 // MIDDLEWARE
 // ============================================
@@ -47,12 +50,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting
+// Development: Very high limits for testing
+// Production: Stricter limits for security
+const isDevelopment = process.env.NODE_ENV !== 'production';
 const limiter = rateLimit({
-  windowMs: (process.env.RATE_LIMIT_WINDOW || 15) * 60 * 1000,
-  max: process.env.RATE_LIMIT_MAX || 100,
+  windowMs: (process.env.RATE_LIMIT_WINDOW || 1) * 60 * 1000, // Default: 1 minute
+  max: isDevelopment ? 10000 : (process.env.RATE_LIMIT_MAX || 1000), // Dev: 10000, Prod: 1000 per window
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  skip: (req) => isDevelopment && req.ip === '::1' || req.ip === '127.0.0.1' // Skip rate limit for localhost in dev
 });
 app.use('/api/', limiter);
 
@@ -164,6 +171,11 @@ const startServer = async () => {
       logger.info(`💚 Health check: http://localhost:${PORT}/health`);
       logger.info(`🗄️  Database: Connected`);
       logger.info('='.repeat(50));
+
+      // Start campaign executor
+      logger.info('[Server] Starting campaign executor...');
+      campaignExecutor.start();
+      logger.info('[Server] Campaign executor started successfully');
     });
   } catch (error) {
     logger.logError(error, 'Server Startup');
@@ -174,12 +186,14 @@ const startServer = async () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('[Server] SIGTERM received. Shutting down gracefully...');
+  campaignExecutor.stop();
   await db.close();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   logger.info('[Server] SIGINT received. Shutting down gracefully...');
+  campaignExecutor.stop();
   await db.close();
   process.exit(0);
 });

@@ -36,11 +36,11 @@ async function getAllMessages(req, res) {
     const {
       page = 1,
       limit = 20,
-      campaign_id,
-      contact_id,
+      campaignId,
+      contactId,
       status,
-      date_from,
-      date_to,
+      dateFrom,
+      dateTo,
       sort = 'created_at',
       order = 'desc'
     } = req.query;
@@ -52,15 +52,15 @@ async function getAllMessages(req, res) {
     let params = [];
     let paramCount = 1;
 
-    if (campaign_id) {
+    if (campaignId) {
       whereClause.push(`m.campaign_id = $${paramCount}`);
-      params.push(campaign_id);
+      params.push(campaignId);
       paramCount++;
     }
 
-    if (contact_id) {
+    if (contactId) {
       whereClause.push(`m.contact_id = $${paramCount}`);
-      params.push(contact_id);
+      params.push(contactId);
       paramCount++;
     }
 
@@ -70,15 +70,15 @@ async function getAllMessages(req, res) {
       paramCount++;
     }
 
-    if (date_from) {
+    if (dateFrom) {
       whereClause.push(`m.created_at >= $${paramCount}`);
-      params.push(date_from);
+      params.push(dateFrom);
       paramCount++;
     }
 
-    if (date_to) {
+    if (dateTo) {
       whereClause.push(`m.created_at <= $${paramCount}`);
-      params.push(date_to);
+      params.push(dateTo);
       paramCount++;
     }
 
@@ -109,11 +109,11 @@ async function getAllMessages(req, res) {
 
     const messages = result.rows.map(row => ({
       id: row.id,
-      message_text: row.message_text,
+      messageText: row.message_text,
       status: row.status,
-      sent_at: row.sent_at,
-      delivered_at: row.delivered_at,
-      error_message: row.error_message,
+      sentAt: row.sent_at,
+      deliveredAt: row.delivered_at,
+      errorMessage: row.error_message,
       campaign: {
         id: row.campaign_id,
         name: row.campaign_name
@@ -123,7 +123,7 @@ async function getAllMessages(req, res) {
         name: row.contact_name,
         number: row.contact_number
       },
-      created_at: row.created_at
+      createdAt: row.created_at
     }));
 
     logger.info(`[Messages] Fetched ${messages.length} messages (page ${page})`);
@@ -188,12 +188,12 @@ async function getMessageById(req, res) {
 
     const message = {
       id: row.id,
-      message_text: row.message_text,
+      messageText: row.message_text,
       status: row.status,
-      sent_at: row.sent_at,
-      delivered_at: row.delivered_at,
-      read_at: row.read_at,
-      error_message: row.error_message,
+      sentAt: row.sent_at,
+      deliveredAt: row.delivered_at,
+      readAt: row.read_at,
+      errorMessage: row.error_message,
       campaign: {
         id: row.campaign_id,
         name: row.campaign_name
@@ -206,9 +206,9 @@ async function getMessageById(req, res) {
       consultant: {
         id: row.consultant_id,
         name: row.consultant_name,
-        instance_name: row.instance_name
+        instanceName: row.instance_name
       },
-      created_at: row.created_at
+      createdAt: row.created_at
     };
 
     logger.info(`[Messages] Fetched message ${id}`);
@@ -241,12 +241,12 @@ async function sendMessage(req, res) {
 
   try {
     const {
-      campaign_id,
-      contact_id,
-      message_text,
-      template_id,
-      custom_variables,
-      scheduled_for
+      campaignId,
+      contactId,
+      messageText,
+      templateId,
+      customVariables,
+      scheduledFor
     } = req.body;
 
     await client.query('BEGIN');
@@ -262,7 +262,7 @@ async function sendMessage(req, res) {
       WHERE c.id = $1
     `;
 
-    const campaignResult = await client.query(campaignQuery, [campaign_id]);
+    const campaignResult = await client.query(campaignQuery, [campaignId]);
 
     if (campaignResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -299,7 +299,7 @@ async function sendMessage(req, res) {
       WHERE id = $1 AND consultant_id = $2
     `;
 
-    const contactResult = await client.query(contactQuery, [contact_id, campaign.consultant_id]);
+    const contactResult = await client.query(contactQuery, [contactId, campaign.consultant_id]);
 
     if (contactResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -311,10 +311,10 @@ async function sendMessage(req, res) {
 
     const contact = contactResult.rows[0];
 
-    // TEMPLATE RENDERING: If template_id provided, render template with variables
-    let finalMessageText = message_text;
+    // TEMPLATE RENDERING: If templateId provided, render template with variables
+    let finalMessageText = messageText;
 
-    if (template_id) {
+    if (templateId) {
       try {
         // Fetch template
         const templateQuery = `
@@ -322,7 +322,7 @@ async function sendMessage(req, res) {
           FROM message_templates
           WHERE id = $1 AND consultant_id = $2 AND is_active = true
         `;
-        const templateResult = await client.query(templateQuery, [template_id, campaign.consultant_id]);
+        const templateResult = await client.query(templateQuery, [templateId, campaign.consultant_id]);
 
         if (templateResult.rows.length === 0) {
           await client.query('ROLLBACK');
@@ -352,7 +352,7 @@ async function sendMessage(req, res) {
           campaign_name: campaign.campaign_name,
 
           // Merge custom variables if provided
-          ...(custom_variables || {})
+          ...(customVariables || {})
         };
 
         // Render template
@@ -361,10 +361,10 @@ async function sendMessage(req, res) {
         // Update template usage count
         await client.query(
           'UPDATE message_templates SET usage_count = usage_count + 1 WHERE id = $1',
-          [template_id]
+          [templateId]
         );
 
-        logger.info(`[Messages] Rendered template ${template_id} for contact ${contact_id}`);
+        logger.info(`[Messages] Rendered template ${templateId} for contact ${contactId}`);
 
       } catch (error) {
         await client.query('ROLLBACK');
@@ -382,7 +382,7 @@ async function sendMessage(req, res) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
-        error: 'Message text or template_id is required'
+        error: 'Message text or templateId is required'
       });
     }
 
@@ -391,7 +391,7 @@ async function sendMessage(req, res) {
       await client.query('ROLLBACK');
       await logSpamEvent(campaign.consultant_id, 'HIGH_SPAM_SCORE', {
         spam_score: campaign.spam_risk_score,
-        campaign_id
+        campaignId
       });
 
       return res.status(429).json({
@@ -450,7 +450,7 @@ async function sendMessage(req, res) {
         daily_limit: effectiveDailyLimit,
         custom_daily_limit: campaign.daily_limit,
         today_count: todayCount,
-        campaign_id,
+        campaignId,
         warmup_info: warmupInfo
       });
 
@@ -459,11 +459,11 @@ async function sendMessage(req, res) {
         error: connectedAt
           ? `Daily message limit reached (Warm-up ${warmupInfo.statusName})`
           : 'Consultant not connected to WhatsApp yet',
-        daily_limit: effectiveDailyLimit,
-        custom_daily_limit: campaign.daily_limit,
-        sent_today: todayCount,
+        dailyLimit: effectiveDailyLimit,
+        customDailyLimit: campaign.daily_limit,
+        sentToday: todayCount,
         remaining: Math.max(effectiveDailyLimit - todayCount, 0),
-        warmup_info: connectedAt ? {
+        warmupInfo: connectedAt ? {
           status: warmupInfo.status,
           statusName: warmupInfo.statusName,
           weeksSinceConnection: warmupInfo.weeksSinceConnection,
@@ -488,13 +488,13 @@ async function sendMessage(req, res) {
         await logSpamEvent(campaign.consultant_id, 'OUTSIDE_HOURS', {
           current_hour: currentHour,
           allowed_hours: `${ANTI_SPAM_RULES.ALLOWED_START_HOUR}:00 - ${ANTI_SPAM_RULES.ALLOWED_END_HOUR}:00`,
-          campaign_id
+          campaignId
         });
 
         return res.status(400).json({
           success: false,
           error: 'Messages can only be sent between 09:00 and 20:00',
-          current_hour: currentHour
+          currentHour: currentHour
         });
       }
     }
@@ -506,17 +506,17 @@ async function sendMessage(req, res) {
       if (hoursSinceLastMessage < ANTI_SPAM_RULES.COOLDOWN_HOURS) {
         await client.query('ROLLBACK');
         await logSpamEvent(campaign.consultant_id, 'COOLDOWN_VIOLATION', {
-          contact_id,
+          contactId,
           hours_since_last: hoursSinceLastMessage.toFixed(2),
           cooldown_required: ANTI_SPAM_RULES.COOLDOWN_HOURS,
-          campaign_id
+          campaignId
         });
 
         return res.status(429).json({
           success: false,
           error: '24-hour cooldown period not met for this contact',
-          hours_since_last_message: hoursSinceLastMessage.toFixed(2),
-          cooldown_hours: ANTI_SPAM_RULES.COOLDOWN_HOURS
+          hoursSinceLastMessage: hoursSinceLastMessage.toFixed(2),
+          cooldownHours: ANTI_SPAM_RULES.COOLDOWN_HOURS
         });
       }
     }
@@ -528,7 +528,7 @@ async function sendMessage(req, res) {
       RETURNING id, created_at
     `;
 
-    const insertResult = await client.query(insertQuery, [campaign_id, contact_id, finalMessageText]);
+    const insertResult = await client.query(insertQuery, [campaignId, contactId, finalMessageText]);
     const messageId = insertResult.rows[0].id;
 
     await client.query('COMMIT');
@@ -549,9 +549,9 @@ async function sendMessage(req, res) {
     res.status(202).json({
       success: true,
       data: {
-        message_id: messageId,
+        messageId: messageId,
         status: 'pending',
-        created_at: insertResult.rows[0].created_at
+        createdAt: insertResult.rows[0].created_at
       },
       message: 'Message queued for sending'
     });
@@ -736,33 +736,33 @@ function sleep(ms) {
  */
 async function getMessageStats(req, res) {
   try {
-    const { consultant_id, campaign_id, date_from, date_to } = req.query;
+    const { consultantId, campaignId, dateFrom, dateTo } = req.query;
 
     let whereClause = [];
     let params = [];
     let paramCount = 1;
 
-    if (consultant_id) {
+    if (consultantId) {
       whereClause.push(`c.consultant_id = $${paramCount}`);
-      params.push(consultant_id);
+      params.push(consultantId);
       paramCount++;
     }
 
-    if (campaign_id) {
+    if (campaignId) {
       whereClause.push(`m.campaign_id = $${paramCount}`);
-      params.push(campaign_id);
+      params.push(campaignId);
       paramCount++;
     }
 
-    if (date_from) {
+    if (dateFrom) {
       whereClause.push(`m.created_at >= $${paramCount}`);
-      params.push(date_from);
+      params.push(dateFrom);
       paramCount++;
     }
 
-    if (date_to) {
+    if (dateTo) {
       whereClause.push(`m.created_at <= $${paramCount}`);
-      params.push(date_to);
+      params.push(dateTo);
       paramCount++;
     }
 

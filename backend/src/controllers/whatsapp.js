@@ -41,8 +41,8 @@ async function connect(req, res) {
         message: 'Already connected to WhatsApp',
         data: {
           status: 'active',
-          connected_at: consultant.connected_at,
-          instance_name: consultant.instance_name
+          connectedAt: consultant.connected_at,
+          instanceName: consultant.instance_name
         }
       });
     }
@@ -111,8 +111,8 @@ async function connect(req, res) {
       success: true,
       data: {
         qrCode: qrcodeResult.qrcode.base64, // Frontend expects qrCode (camelCase) as string
-        instance_name: instanceName,
-        expires_in: 45 // QR code expires in 45 seconds
+        instanceName: instanceName,
+        expiresIn: 45 // QR code expires in 45 seconds
       }
     });
   } catch (error) {
@@ -162,8 +162,31 @@ async function getStatus(req, res) {
       logger.warn(`[WhatsApp] Could not fetch instance status: ${error.message}`);
     }
 
-    // Determine status
-    let status = consultant.status || 'offline';
+    // Determine WhatsApp connection status (NOT account status)
+    // WhatsApp is connected only if both whatsapp_number and connected_at are present
+    let status = 'offline';
+
+    if (consultant.whatsapp_number && consultant.connected_at) {
+      status = 'active';
+    } else if (consultant.status === 'pending') {
+      // Check if pending status is stale (more than 5 minutes)
+      const now = new Date();
+      const updatedAt = new Date(consultant.updated_at);
+      const minutesSinceUpdate = (now - updatedAt) / 1000 / 60;
+
+      if (minutesSinceUpdate > 5) {
+        // Pending status is stale - auto-reset to offline
+        logger.warn(`[WhatsApp] Consultant ${consultantId} stuck in pending state for ${minutesSinceUpdate.toFixed(1)} minutes - resetting to offline`);
+        await db.query(
+          'UPDATE consultants SET status = $1 WHERE id = $2',
+          ['offline', consultantId]
+        );
+        status = 'offline';
+      } else {
+        // QR code scan is in progress
+        status = 'pending';
+      }
+    }
 
     // Sync with Evolution API status
     if (evolutionStatus === 'open' && status !== 'active') {
@@ -176,10 +199,31 @@ async function getStatus(req, res) {
     } else if (evolutionStatus === 'close' && status === 'active') {
       // Evolution says disconnected but DB says connected - update DB
       await db.query(
-        'UPDATE consultants SET status = $1, connected_at = NULL WHERE id = $2',
+        'UPDATE consultants SET status = $1, connected_at = NULL, whatsapp_number = NULL WHERE id = $2',
         ['offline', consultantId]
       );
       status = 'offline';
+    }
+
+    // Sync WhatsApp number if missing but connected
+    if (evolutionStatus === 'open' && (status === 'active' || consultant.status === 'active') && !consultant.whatsapp_number) {
+      try {
+        logger.info(`[WhatsApp] Syncing missing WhatsApp number for consultant ${consultantId} from Evolution API`);
+        const response = await evolutionClient.client.get(`/instance/fetchInstances?instanceName=${instanceName}`);
+        const instances = response.data;
+
+        if (instances && instances.length > 0 && instances[0].ownerJid) {
+          const whatsappNumber = instances[0].ownerJid.replace('@s.whatsapp.net', '');
+          await db.query(
+            'UPDATE consultants SET whatsapp_number = $1 WHERE id = $2',
+            [whatsappNumber, consultantId]
+          );
+          consultant.whatsapp_number = whatsappNumber;
+          logger.info(`[WhatsApp] Synced WhatsApp number ${whatsappNumber} for consultant ${consultantId}`);
+        }
+      } catch (syncError) {
+        logger.warn(`[WhatsApp] Failed to sync WhatsApp number: ${syncError.message}`);
+      }
     }
 
     res.json({

@@ -1,0 +1,30 @@
+{
+  "name": "whatsapp-campaign-system",
+  "version": "1.0.0",
+  "description": "WhatsApp Campaign Management System - Easy setup and deployment",
+  "scripts": {
+    "setup": "node scripts/check-setup.js",
+    "start": "npm run start:docker && npm run start:frontend",
+    "start:docker": "docker-compose up -d",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm run dev",
+    "stop": "docker-compose down",
+    "restart": "npm run stop && npm run start",
+    "health": "node scripts/health-check.js",
+    "seed": "cd backend && node scripts/seed-data.js",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
+    "update": "node scripts/update.js",
+    "logs": "docker-compose logs -f",
+    "logs:backend": "docker-compose logs -f backend",
+    "logs:db": "docker-compose logs -f postgres",
+    "clean": "docker-compose down -v && rm -rf backend/node_modules frontend/node_modules"
+  },
+  "keywords": ["whatsapp", "campaign", "marketing", "automation"],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

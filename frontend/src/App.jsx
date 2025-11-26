@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
@@ -48,11 +48,18 @@ const theme = createTheme({
 
 function App() {
   const { initialize } = useAuthStore();
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize auth from localStorage on mount
   useEffect(() => {
     initialize();
+    setIsInitialized(true);
   }, [initialize]);
+
+  // Wait for auth initialization before rendering routes
+  if (!isInitialized) {
+    return null; // Or a loading spinner
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

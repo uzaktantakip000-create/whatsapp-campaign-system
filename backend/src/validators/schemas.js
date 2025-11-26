@@ -149,12 +149,25 @@ const createCampaignSchema = Joi.object({
   message_template: Joi.string()
     .min(10)
     .max(4000)
-    .required()
+    .optional()
+    .allow('')
     .messages({
-      'string.empty': 'Message template is required',
       'string.min': 'Message template must be at least 10 characters',
       'string.max': 'Message template cannot exceed 4000 characters'
-    })
+    }),
+
+  template_id: Joi.number()
+    .integer()
+    .positive()
+    .optional()
+    .allow(null),
+
+  use_ai_variations: Joi.boolean().optional(),
+
+  segment_filter: Joi.string()
+    .max(20)
+    .optional()
+    .allow(null, '')
 });
 
 const updateCampaignSchema = Joi.object({
@@ -210,10 +223,10 @@ const updateContactSchema = Joi.object({
 
 const contactQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(20),
+  limit: Joi.number().integer().min(1).max(1000).default(20),
   consultant_id: Joi.number().integer().positive(),
   segment: Joi.string().valid('A', 'B', 'C'),
-  search: Joi.string().max(100),
+  search: Joi.string().allow('').max(100),
   sort: Joi.string().valid('created_at', 'updated_at', 'name', 'number').default('created_at'),
   order: Joi.string().valid('asc', 'desc').default('desc')
 });
@@ -282,13 +295,13 @@ const paginationSchema = Joi.object({
 
 const consultantQuerySchema = paginationSchema.keys({
   status: Joi.string().valid('active', 'inactive', 'pending', 'suspended'),
-  search: Joi.string().max(100)
+  search: Joi.string().allow('').max(100)
 });
 
 const campaignQuerySchema = paginationSchema.keys({
   consultant_id: Joi.number().integer().positive(),
   status: Joi.string().valid('draft', 'running', 'paused', 'completed', 'failed'),
-  search: Joi.string().max(100)
+  search: Joi.string().allow('').max(100)
 });
 
 const messageQuerySchema = paginationSchema.keys({

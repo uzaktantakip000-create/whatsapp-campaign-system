@@ -78,7 +78,17 @@ function Admin() {
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  const stats = statsData?.data || {};
+  // Parse stats data - backend returns nested structure
+  const rawStats = statsData?.data || {};
+  const stats = {
+    totalConsultants: rawStats.consultants?.total || 0,
+    activeConsultants: rawStats.consultants?.active || 0,
+    totalCampaigns: rawStats.campaigns?.total || 0,
+    runningCampaigns: rawStats.campaigns?.running || 0,
+    totalMessages: rawStats.messages?.sent_total || 0,
+    messagesToday: rawStats.messages?.sent_today || 0,
+    activeConnections: rawStats.whatsapp?.connected || 0, // Real WhatsApp connections
+  };
 
   // Fetch consultants
   const { data: consultantsData, isLoading: consultantsLoading } = useQuery({
@@ -92,19 +102,29 @@ function Admin() {
       }),
   });
 
-  const consultants = consultantsData?.data?.consultants || [];
-  const totalConsultants = consultantsData?.data?.total || 0;
+  // Backend now returns camelCase - no mapping needed
+  const consultants = (consultantsData?.data || []).map(consultant => ({
+    ...consultant,
+    whatsappStatus: consultant.status, // Rename status to whatsappStatus for clarity
+    campaignCount: consultant.stats?.campaignsCount || 0,
+    contactCount: consultant.stats?.contactsCount || 0,
+    messageCount: consultant.stats?.totalMessages || 0,
+    messagesToday: consultant.stats?.messagesSentToday || 0,
+  }));
+  const totalConsultants = consultantsData?.count || 0;
 
   // Update consultant status mutation
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, isActive }) =>
       adminAPI.updateConsultantStatus(id, { isActive }),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['admin-consultants']);
-      queryClient.invalidateQueries(['admin-stats']);
+    onSuccess: async () => {
+      // Invalidate and refetch queries to get fresh data
+      await queryClient.invalidateQueries({ queryKey: ['admin-consultants'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
       toast.success('Consultant status updated');
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Status update error:', error);
       toast.error('Failed to update consultant status');
     },
   });

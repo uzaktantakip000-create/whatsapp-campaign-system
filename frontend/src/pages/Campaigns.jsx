@@ -27,6 +27,14 @@ import {
   InputAdornment,
   Tabs,
   Tab,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  FormHelperText,
+  Checkbox,
+  ListItemText,
+  OutlinedInput,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -38,22 +46,35 @@ import {
   Search as SearchIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'react-toastify';
 import MainLayout from '../components/layout/MainLayout';
 import campaignsAPI from '../api/campaigns';
+import templatesAPI from '../api/templates';
+import contactsAPI from '../api/contacts';
+import useAuthStore from '../store/authStore';
 
 // Validation schema
 const campaignSchema = z.object({
   name: z.string().min(3, 'Campaign name must be at least 3 characters'),
-  message: z.string().min(10, 'Message must be at least 10 characters'),
+  message: z.string().min(10, 'Message must be at least 10 characters').or(z.literal('')).optional(),
+  templateId: z.number().optional(),
+  segmentFilter: z.string().optional(),
+  selectedContacts: z.array(z.number()).optional(),
   scheduledFor: z.string().optional(),
-});
+}).refine(
+  (data) => data.message || data.templateId,
+  {
+    message: 'Either message or template must be provided',
+    path: ['message'],
+  }
+);
 
 function Campaigns() {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
 
   // State
   const [page, setPage] = useState(0);
@@ -66,16 +87,24 @@ function Campaigns() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [viewingCampaign, setViewingCampaign] = useState(null);
+  const [recipientType, setRecipientType] = useState('all'); // 'all', 'segment', 'specific'
+  const [selectedSegments, setSelectedSegments] = useState([]);
+  const [selectedContacts, setSelectedContacts] = useState([]);
 
   // Form
-  const { register, handleSubmit, formState: { errors }, reset } = useForm({
+  const { register, handleSubmit, formState: { errors }, reset, control, watch, setValue } = useForm({
     resolver: zodResolver(campaignSchema),
     defaultValues: {
       name: '',
       message: '',
+      templateId: undefined,
+      segmentFilter: '',
+      selectedContacts: [],
       scheduledFor: '',
     },
   });
+
+  const watchTemplateId = watch('templateId');
 
   // Fetch campaigns with auto-refresh for running campaigns
   const { data, isLoading, error } = useQuery({
@@ -97,26 +126,73 @@ function Campaigns() {
     },
   });
 
-  const campaigns = data?.data?.campaigns || [];
-  const totalCount = data?.data?.total || 0;
+  const campaigns = data?.data || [];
+  const totalCount = data?.pagination?.total || 0;
+
+  // Fetch templates
+  const { data: templatesData } = useQuery({
+    queryKey: ['templates'],
+    queryFn: () => templatesAPI.getTemplates({ limit: 100, isActive: true }),
+    enabled: campaignDialogOpen, // Only fetch when dialog is open
+  });
+
+  const templates = templatesData?.data || [];
+
+  // Fetch contacts - load when dialog opens so they're ready when user selects "Specific Contacts"
+  const { data: contactsData, isLoading: contactsLoading, error: contactsError } = useQuery({
+    queryKey: ['contacts', user?.id],
+    queryFn: async () => {
+      const result = await contactsAPI.getContacts({
+        limit: 1000,
+        consultantId: user?.id
+      });
+      return result;
+    },
+    enabled: campaignDialogOpen && !!user?.id, // Load contacts when dialog opens and user is logged in
+  });
+
+  const contacts = contactsData?.data || [];
 
   // Create/Update mutation
   const saveMutation = useMutation({
-    mutationFn: (data) => {
-      if (editingCampaign) {
-        return campaignsAPI.updateCampaign(editingCampaign.id, data);
+    mutationFn: async (data) => {
+      console.log('Creating campaign with data:', data);
+
+      // Create campaign
+      const response = await campaignsAPI.createCampaign(data);
+      console.log('Campaign created:', response);
+
+      // Add recipients if campaign created successfully
+      if (response.success && response.data.id) {
+        const recipientData = {};
+
+        if (data.recipientType === 'segment' && data.selectedSegments?.length > 0) {
+          recipientData.segmentFilter = data.selectedSegments.join(',');
+        } else if (data.recipientType === 'specific' && data.selectedContacts?.length > 0) {
+          recipientData.contactIds = data.selectedContacts;
+        }
+        // If 'all' or no specific type, send empty object to add all contacts
+
+        console.log('Adding recipients:', recipientData);
+        await campaignsAPI.addRecipients(response.data.id, recipientData);
       }
-      return campaignsAPI.createCampaign(data);
+
+      return response;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['campaigns']);
       setCampaignDialogOpen(false);
       setEditingCampaign(null);
       reset();
-      toast.success(editingCampaign ? 'Campaign updated' : 'Campaign created');
+      setRecipientType('all');
+      setSelectedSegments([]);
+      setSelectedContacts([]);
+      toast.success('Campaign created and recipients added successfully');
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to save campaign');
+      console.error('Campaign creation error:', error);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to create campaign';
+      toast.error(errorMessage);
     },
   });
 
@@ -130,7 +206,8 @@ function Campaigns() {
       toast.success('Campaign deleted');
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to delete campaign');
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete campaign';
+      toast.error(errorMessage);
     },
   });
 
@@ -142,19 +219,21 @@ function Campaigns() {
       toast.success('Campaign started');
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to start campaign');
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to start campaign';
+      toast.error(errorMessage);
     },
   });
 
   // Stop mutation
   const stopMutation = useMutation({
-    mutationFn: (id) => campaignsAPI.stopCampaign(id),
+    mutationFn: (id) => campaignsAPI.pauseCampaign(id),
     onSuccess: () => {
       queryClient.invalidateQueries(['campaigns']);
-      toast.success('Campaign stopped');
+      toast.success('Campaign paused');
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to stop campaign');
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to pause campaign';
+      toast.error(errorMessage);
     },
   });
 
@@ -166,7 +245,17 @@ function Campaigns() {
 
   const handleAddCampaign = () => {
     setEditingCampaign(null);
-    reset({ name: '', message: '', scheduledFor: '' });
+    reset({
+      name: '',
+      message: '',
+      templateId: undefined,
+      segmentFilter: '',
+      selectedContacts: [],
+      scheduledFor: ''
+    });
+    setRecipientType('all');
+    setSelectedSegments([]);
+    setSelectedContacts([]);
     setCampaignDialogOpen(true);
   };
 
@@ -174,9 +263,21 @@ function Campaigns() {
     setEditingCampaign(campaign);
     reset({
       name: campaign.name,
-      message: campaign.message || '',
+      message: campaign.messageTemplate || '',
+      templateId: campaign.templateId || undefined,
       scheduledFor: campaign.scheduledFor || '',
     });
+
+    // Set segment filter if exists
+    if (campaign.segmentFilter) {
+      const segments = campaign.segmentFilter.split(',').map(s => s.trim());
+      setRecipientType('segment');
+      setSelectedSegments(segments);
+    } else {
+      setRecipientType('all');
+      setSelectedSegments([]);
+    }
+
     setCampaignDialogOpen(true);
   };
 
@@ -202,8 +303,40 @@ function Campaigns() {
     }
   };
 
-  const onSubmit = (data) => {
-    saveMutation.mutate(data);
+  const onSubmit = (formData) => {
+    console.log('Form submitted:', formData);
+    console.log('Recipient type:', recipientType);
+    console.log('Selected segments:', selectedSegments);
+
+    // Validate segment selection
+    if (recipientType === 'segment' && selectedSegments.length === 0) {
+      toast.error('Please select at least one segment');
+      return;
+    }
+
+    // Validate specific contact selection
+    if (recipientType === 'specific' && selectedContacts.length === 0) {
+      toast.error('Please select at least one contact');
+      return;
+    }
+
+    // Prepare campaign data (backend expects snake_case)
+    const campaignData = {
+      consultant_id: user.id,
+      name: formData.name,
+      message_template: formData.message || '',
+      template_id: formData.templateId || null,
+      segment_filter: recipientType === 'segment' ? selectedSegments.join(',') : null,
+      use_ai_variations: false,
+      recipientType,
+      selectedSegments,
+      selectedContacts,
+    };
+
+    console.log('Submitting campaign data:', campaignData);
+
+    // Trigger mutation
+    saveMutation.mutate(campaignData);
   };
 
   const getStatusChip = (status) => {
@@ -261,9 +394,10 @@ function Campaigns() {
           >
             <Tab label="All" value="all" />
             <Tab label="Draft" value="draft" />
-            <Tab label="Scheduled" value="scheduled" />
             <Tab label="Running" value="running" />
+            <Tab label="Paused" value="paused" />
             <Tab label="Completed" value="completed" />
+            <Tab label="Failed" value="failed" />
           </Tabs>
         </Paper>
 
@@ -424,9 +558,7 @@ function Campaigns() {
           <DialogTitle>{editingCampaign ? 'Edit Campaign' : 'Create Campaign'}</DialogTitle>
           <form onSubmit={handleSubmit(onSubmit)}>
             <DialogContent>
-              <Alert severity="info" sx={{ mb: 2 }}>
-                Simplified campaign creation. Full features (recipient selection, template editor, scheduling) coming soon!
-              </Alert>
+              {/* Campaign Name */}
               <TextField
                 fullWidth
                 label="Campaign Name"
@@ -435,6 +567,45 @@ function Campaigns() {
                 helperText={errors.name?.message}
                 margin="normal"
               />
+
+              {/* Template Selection */}
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Template (Optional)</InputLabel>
+                <Controller
+                  name="templateId"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      {...field}
+                      label="Template (Optional)"
+                      value={field.value || ''}
+                      onChange={(e) => {
+                        const templateId = e.target.value || undefined;
+                        field.onChange(templateId);
+                        // Auto-fill message if template selected
+                        if (templateId) {
+                          const selectedTemplate = templates.find(t => t.id === Number(templateId));
+                          if (selectedTemplate) {
+                            setValue('message', selectedTemplate.content);
+                          }
+                        }
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>None (Write custom message)</em>
+                      </MenuItem>
+                      {templates.map((template) => (
+                        <MenuItem key={template.id} value={template.id}>
+                          {template.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                />
+                <FormHelperText>Select a template to auto-fill the message</FormHelperText>
+              </FormControl>
+
+              {/* Message */}
               <TextField
                 fullWidth
                 multiline
@@ -442,24 +613,115 @@ function Campaigns() {
                 label="Message"
                 {...register('message')}
                 error={!!errors.message}
-                helperText={errors.message?.message || 'Placeholder for now. Template editor coming soon.'}
+                helperText={errors.message?.message || 'Enter your message or select a template above'}
                 margin="normal"
               />
-              <TextField
-                fullWidth
-                type="datetime-local"
-                label="Schedule For (Optional)"
-                {...register('scheduledFor')}
-                error={!!errors.scheduledFor}
-                helperText={errors.scheduledFor?.message || 'Leave empty to save as draft'}
-                margin="normal"
-                InputLabelProps={{ shrink: true }}
-              />
+
+              {/* Recipient Selection */}
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Send To</InputLabel>
+                <Select
+                  value={recipientType}
+                  onChange={(e) => setRecipientType(e.target.value)}
+                  label="Send To"
+                >
+                  <MenuItem value="all">All Contacts</MenuItem>
+                  <MenuItem value="segment">By Segment</MenuItem>
+                  <MenuItem value="specific">Specific Contacts</MenuItem>
+                </Select>
+                <FormHelperText>Choose who will receive this campaign</FormHelperText>
+              </FormControl>
+
+              {/* Segment Selection */}
+              {recipientType === 'segment' && (
+                <FormControl fullWidth margin="normal">
+                  <InputLabel>Select Segments</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedSegments}
+                    onChange={(e) => setSelectedSegments(e.target.value)}
+                    input={<OutlinedInput label="Select Segments" />}
+                    renderValue={(selected) => selected.join(', ')}
+                  >
+                    <MenuItem value="A">
+                      <Checkbox checked={selectedSegments.indexOf('A') > -1} />
+                      <ListItemText primary="Segment A (Hot)" />
+                    </MenuItem>
+                    <MenuItem value="B">
+                      <Checkbox checked={selectedSegments.indexOf('B') > -1} />
+                      <ListItemText primary="Segment B (Warm)" />
+                    </MenuItem>
+                    <MenuItem value="C">
+                      <Checkbox checked={selectedSegments.indexOf('C') > -1} />
+                      <ListItemText primary="Segment C (Cold)" />
+                    </MenuItem>
+                  </Select>
+                  <FormHelperText>
+                    {selectedSegments.length > 0
+                      ? `Selected: ${selectedSegments.join(', ')}`
+                      : 'Select at least one segment'}
+                  </FormHelperText>
+                </FormControl>
+              )}
+
+              {/* Specific Contact Selection */}
+              {recipientType === 'specific' && (
+                <FormControl fullWidth margin="normal">
+                  <InputLabel>Select Contacts</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedContacts}
+                    onChange={(e) => setSelectedContacts(e.target.value)}
+                    input={<OutlinedInput label="Select Contacts" />}
+                    disabled={contactsLoading}
+                    renderValue={(selected) => {
+                      if (contactsLoading) return 'Loading contacts...';
+                      if (contacts.length === 0) return 'No contacts available';
+                      const selectedNames = contacts
+                        .filter(c => selected.includes(c.id))
+                        .map(c => c.name);
+                      return selectedNames.length > 0 ? selectedNames.join(', ') : 'Select contacts';
+                    }}
+                  >
+                    {contactsLoading ? (
+                      <MenuItem disabled>
+                        <CircularProgress size={20} sx={{ mr: 2 }} />
+                        Loading contacts...
+                      </MenuItem>
+                    ) : contacts.length === 0 ? (
+                      <MenuItem disabled>
+                        No contacts available
+                      </MenuItem>
+                    ) : (
+                      contacts.map((contact) => (
+                        <MenuItem key={contact.id} value={contact.id}>
+                          <Checkbox checked={selectedContacts.indexOf(contact.id) > -1} />
+                          <ListItemText
+                            primary={contact.name}
+                            secondary={contact.number}
+                          />
+                        </MenuItem>
+                      ))
+                    )}
+                  </Select>
+                  <FormHelperText>
+                    {contactsLoading ? (
+                      'Loading contacts...'
+                    ) : contacts.length === 0 ? (
+                      'No contacts found. Please add contacts first.'
+                    ) : selectedContacts.length > 0 ? (
+                      `${selectedContacts.length} contact(s) selected`
+                    ) : (
+                      'Select at least one contact'
+                    )}
+                  </FormHelperText>
+                </FormControl>
+              )}
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setCampaignDialogOpen(false)}>Cancel</Button>
               <Button type="submit" variant="contained" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? 'Saving...' : editingCampaign ? 'Update' : 'Create'}
+                {saveMutation.isPending ? 'Creating...' : 'Create Campaign'}
               </Button>
             </DialogActions>
           </form>

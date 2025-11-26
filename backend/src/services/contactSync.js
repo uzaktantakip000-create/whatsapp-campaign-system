@@ -24,7 +24,7 @@ async function syncContacts(consultantId, instanceName) {
 
     // 2. Get existing contacts from database
     const existingResult = await db.query(
-      'SELECT number, id, name, profile_pic_url FROM contacts WHERE consultant_id = $1',
+      'SELECT number, id, name, profile_pic_url, is_deleted FROM contacts WHERE consultant_id = $1',
       [consultantId]
     );
 
@@ -36,9 +36,13 @@ async function syncContacts(consultantId, instanceName) {
 
     logger.debug(`[ContactSync] Found ${existingContactsMap.size} existing contacts in database`);
 
-    // 3. Separate new and existing contacts
+    // 3. Create a Set of WhatsApp contact numbers for fast lookup
+    const whatsappContactNumbers = new Set(whatsappContacts.map(c => c.number));
+
+    // 4. Separate new, existing, and deleted contacts
     const newContacts = [];
     const updateContacts = [];
+    const restoreContacts = []; // Contacts that came back to WhatsApp
 
     for (const whatsappContact of whatsappContacts) {
       const existingContact = existingContactsMap.get(whatsappContact.number);
@@ -47,41 +51,69 @@ async function syncContacts(consultantId, instanceName) {
         // New contact
         newContacts.push(whatsappContact);
       } else {
-        // Check if name or profile pic changed
-        if (
+        // Check if name or profile pic changed, or if contact was previously deleted
+        const needsUpdate =
           existingContact.name !== whatsappContact.name ||
-          existingContact.profile_pic_url !== whatsappContact.profilePicUrl
-        ) {
+          existingContact.profile_pic_url !== whatsappContact.profilePicUrl;
+
+        if (needsUpdate) {
           updateContacts.push({
             id: existingContact.id,
             name: whatsappContact.name,
             profilePicUrl: whatsappContact.profilePicUrl
           });
         }
+
+        // If contact was deleted but now back in WhatsApp, restore it
+        if (existingContact.is_deleted) {
+          restoreContacts.push(existingContact.id);
+        }
       }
     }
 
-    logger.info(`[ContactSync] New: ${newContacts.length}, Update: ${updateContacts.length}`);
+    // 5. Find deleted contacts (exist in DB but not in WhatsApp)
+    const deletedContactIds = [];
+    for (const [number, contact] of existingContactsMap.entries()) {
+      if (!whatsappContactNumbers.has(number) && !contact.is_deleted) {
+        deletedContactIds.push(contact.id);
+      }
+    }
 
-    // 4. Bulk insert new contacts
+    logger.info(`[ContactSync] New: ${newContacts.length}, Update: ${updateContacts.length}, Deleted: ${deletedContactIds.length}, Restored: ${restoreContacts.length}`);
+
+    // 6. Bulk insert new contacts
     let insertedCount = 0;
     if (newContacts.length > 0) {
       insertedCount = await bulkInsertContacts(consultantId, newContacts);
     }
 
-    // 5. Bulk update existing contacts
+    // 7. Bulk update existing contacts
     let updatedCount = 0;
     if (updateContacts.length > 0) {
       updatedCount = await bulkUpdateContacts(updateContacts);
     }
 
+    // 8. Mark deleted contacts (soft delete)
+    let deletedCount = 0;
+    if (deletedContactIds.length > 0) {
+      deletedCount = await markContactsAsDeleted(deletedContactIds);
+    }
+
+    // 9. Restore previously deleted contacts
+    let restoredCount = 0;
+    if (restoreContacts.length > 0) {
+      restoredCount = await restoreDeletedContacts(restoreContacts);
+    }
+
     const duration = Date.now() - startTime;
-    logger.info(`[ContactSync] Sync completed in ${duration}ms: ${insertedCount} inserted, ${updatedCount} updated`);
+    logger.info(`[ContactSync] Sync completed in ${duration}ms: ${insertedCount} inserted, ${updatedCount} updated, ${deletedCount} deleted, ${restoredCount} restored`);
 
     return {
       total: whatsappContacts.length,
       inserted: insertedCount,
       updated: updatedCount,
+      deleted: deletedCount,
+      restored: restoredCount,
       duration: duration
     };
 
@@ -178,6 +210,62 @@ async function bulkUpdateContacts(contacts) {
 }
 
 /**
+ * Mark contacts as deleted (soft delete)
+ * @param {Array<number>} contactIds - Array of contact IDs to mark as deleted
+ * @returns {Promise<number>} Number of contacts marked as deleted
+ */
+async function markContactsAsDeleted(contactIds) {
+  if (contactIds.length === 0) return 0;
+
+  try {
+    logger.debug(`[ContactSync] Marking ${contactIds.length} contacts as deleted`);
+
+    const placeholders = contactIds.map((_, i) => `$${i + 1}`).join(',');
+    const query = `
+      UPDATE contacts
+      SET is_deleted = true, updated_at = CURRENT_TIMESTAMP
+      WHERE id IN (${placeholders})
+    `;
+
+    const result = await db.query(query, contactIds);
+    logger.info(`[ContactSync] Successfully marked ${result.rowCount} contacts as deleted`);
+
+    return result.rowCount;
+  } catch (error) {
+    logger.error(`[ContactSync] Failed to mark contacts as deleted: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Restore deleted contacts (set is_deleted = false)
+ * @param {Array<number>} contactIds - Array of contact IDs to restore
+ * @returns {Promise<number>} Number of contacts restored
+ */
+async function restoreDeletedContacts(contactIds) {
+  if (contactIds.length === 0) return 0;
+
+  try {
+    logger.debug(`[ContactSync] Restoring ${contactIds.length} deleted contacts`);
+
+    const placeholders = contactIds.map((_, i) => `$${i + 1}`).join(',');
+    const query = `
+      UPDATE contacts
+      SET is_deleted = false, updated_at = CURRENT_TIMESTAMP
+      WHERE id IN (${placeholders})
+    `;
+
+    const result = await db.query(query, contactIds);
+    logger.info(`[ContactSync] Successfully restored ${result.rowCount} contacts`);
+
+    return result.rowCount;
+  } catch (error) {
+    logger.error(`[ContactSync] Failed to restore contacts: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * Get last sync time for a consultant
  * @param {number} consultantId - Consultant ID
  * @returns {Promise<Date|null>} Last sync time or null
@@ -200,5 +288,7 @@ module.exports = {
   syncContacts,
   bulkInsertContacts,
   bulkUpdateContacts,
+  markContactsAsDeleted,
+  restoreDeletedContacts,
   getLastSyncTime
 };

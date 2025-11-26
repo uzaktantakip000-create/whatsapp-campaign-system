@@ -77,7 +77,7 @@ async function register(req, res) {
           name: consultant.name,
           email: consultant.email,
           phone: consultant.phone,
-          instance_name: consultant.instance_name,
+          instanceName: consultant.instance_name,
           role: consultant.role
         },
         token
@@ -167,7 +167,7 @@ async function login(req, res) {
           name: consultant.name,
           email: consultant.email,
           phone: consultant.phone,
-          instance_name: consultant.instance_name,
+          instanceName: consultant.instance_name,
           role: consultant.role,
           status: consultant.status
         },
@@ -222,10 +222,29 @@ async function me(req, res) {
       });
     }
 
-    const consultant = result.rows[0];
+    const row = result.rows[0];
 
-    // Remove sensitive data
-    delete consultant.password_hash;
+    // Transform to camelCase and remove sensitive data
+    const consultant = {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      role: row.role,
+      instanceName: row.instance_name,
+      status: row.status,
+      dailyLimit: row.daily_limit,
+      spamRiskScore: row.spam_risk_score,
+      whatsappNumber: row.whatsapp_number,
+      connectedAt: row.connected_at,
+      lastActiveAt: row.last_active_at,
+      isActive: row.is_active,
+      contactsCount: parseInt(row.contacts_count) || 0,
+      campaignsCount: parseInt(row.campaigns_count) || 0,
+      messagesSentToday: parseInt(row.messages_sent_today) || 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
 
     res.json({
       success: true,

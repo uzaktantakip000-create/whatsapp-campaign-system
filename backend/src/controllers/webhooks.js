@@ -47,7 +47,11 @@ async function processEvent(event) {
 
   logger.info(`[Webhook] Processing ${eventType} for ${instanceName}`);
 
-  switch (eventType) {
+  // Normalize event type to lowercase and handle both formats
+  // Evolution API may send: QRCODE_UPDATED or qrcode.updated
+  const normalizedEvent = eventType.toLowerCase().replace(/_/g, '.');
+
+  switch (normalizedEvent) {
     case 'qrcode.updated':
       await handleQRCodeUpdated(event);
       break;
@@ -61,7 +65,7 @@ async function processEvent(event) {
       break;
 
     default:
-      logger.debug(`[Webhook] Unhandled event type: ${eventType}`);
+      logger.debug(`[Webhook] Unhandled event type: ${eventType} (normalized: ${normalizedEvent})`);
   }
 }
 
@@ -89,7 +93,8 @@ async function handleConnectionUpdate(event) {
   const instanceName = event.instance;
   const state = event.data?.state;
 
-  logger.info(`[Webhook] Connection update for ${instanceName}: state=${state}`);
+  // Log full event data for debugging
+  logger.info(`[Webhook] Connection update for ${instanceName}: state=${state}, full data:`, JSON.stringify(event.data));
 
   if (!instanceName) {
     logger.error('[Webhook] No instance name in connection update event');
@@ -113,8 +118,40 @@ async function handleConnectionUpdate(event) {
     // WhatsApp connected!
     logger.info(`[Webhook] WhatsApp connected for consultant ${consultant.id} (${consultant.name})`);
 
-    // Extract WhatsApp number if available
-    const whatsappNumber = event.data?.number || null;
+    // Extract WhatsApp number - try multiple possible locations in event data
+    let whatsappNumber = null;
+
+    // Evolution API v2 may send number in different locations
+    if (event.data?.instance?.owner) {
+      whatsappNumber = event.data.instance.owner.replace('@s.whatsapp.net', '');
+    } else if (event.data?.number) {
+      whatsappNumber = event.data.number;
+    } else if (event.data?.statusReason && typeof event.data.statusReason === 'string') {
+      // Sometimes the number is in the status data (only if it's a string)
+      const match = event.data.statusReason.match(/\d+/);
+      if (match) whatsappNumber = match[0];
+    }
+
+    // If number not found in webhook event, fetch it from Evolution API
+    if (!whatsappNumber) {
+      try {
+        const evolutionClient = require('../services/evolution/client');
+        logger.info(`[Webhook] Fetching instance info from Evolution API for ${instanceName}`);
+
+        // Use Evolution API client to get full instance info
+        const response = await evolutionClient.client.get(`/instance/fetchInstances?instanceName=${instanceName}`);
+        const instances = response.data;
+
+        if (instances && instances.length > 0 && instances[0].ownerJid) {
+          whatsappNumber = instances[0].ownerJid.replace('@s.whatsapp.net', '');
+          logger.info(`[Webhook] Retrieved WhatsApp number from Evolution API: ${whatsappNumber}`);
+        }
+      } catch (fetchError) {
+        logger.warn(`[Webhook] Failed to fetch instance info from Evolution API: ${fetchError.message}`);
+      }
+    }
+
+    logger.info(`[Webhook] Extracted WhatsApp number: ${whatsappNumber || 'N/A'}`);
 
     // Update consultant status to active
     await db.query(`
@@ -125,7 +162,7 @@ async function handleConnectionUpdate(event) {
       WHERE id = $2
     `, [whatsappNumber, consultant.id]);
 
-    logger.info(`[Webhook] Consultant ${consultant.id} marked as active`);
+    logger.info(`[Webhook] Consultant ${consultant.id} marked as active with number ${whatsappNumber || 'N/A'}`);
 
     // AUTO-SYNC CONTACTS (Checkpoint 5.3)
     try {
@@ -150,24 +187,90 @@ async function handleConnectionUpdate(event) {
 
     logger.info(`[Webhook] Consultant ${consultant.id} marked as offline`);
   } else {
-    logger.debug(`[Webhook] Connection state for ${instanceName}: ${state}`);
+    logger.debug(`[Webhook] Connection state for ${instanceName}: ${state}, full event data: ${JSON.stringify(event.data)}`);
   }
 }
 
 /**
  * Handle message upsert event (new message received)
- * This will be used in Phase 4 for handling incoming messages
+ * Updates contact's last_message_time when receiving messages
  */
 async function handleMessageUpsert(event) {
   const instanceName = event.instance;
-  const messages = event.data?.messages || [];
 
-  logger.debug(`[Webhook] Message upsert for ${instanceName}: ${messages.length} messages`);
+  // Evolution API v2 sends message data directly, not in an array
+  // Check if event.data is an array or a single message object
+  let messages = [];
 
-  // TODO: Implement in Phase 4 - handle incoming messages
-  // For now, just log
+  if (Array.isArray(event.data?.messages)) {
+    // Format 1: { messages: [...] }
+    messages = event.data.messages;
+  } else if (event.data?.key) {
+    // Format 2: Single message object directly
+    messages = [event.data];
+  } else if (Array.isArray(event.data)) {
+    // Format 3: Array of messages directly
+    messages = event.data;
+  }
+
+  logger.info(`[Webhook] Message upsert for ${instanceName}: ${messages.length} messages`);
+
+  // Process each message
   for (const message of messages) {
-    logger.debug(`[Webhook] Message from ${message.key?.remoteJid}: ${message.message?.conversation}`);
+    try {
+      logger.info(`[Webhook] Processing message: ${JSON.stringify(message.key)}`);
+      const messageKey = message.key;
+      const fromMe = messageKey?.fromMe;
+      const remoteJid = messageKey?.remoteJid;
+
+      // Extract phone number from remoteJid (format: "905391234567@s.whatsapp.net")
+      if (!remoteJid) {
+        logger.warn('[Webhook] Message has no remoteJid, skipping');
+        continue;
+      }
+
+      const phoneNumber = remoteJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+
+      // Skip group messages (@g.us)
+      if (remoteJid.includes('@g.us')) {
+        logger.info(`[Webhook] Skipping group message from ${phoneNumber}`);
+        continue;
+      }
+
+      logger.info(`[Webhook] Message ${fromMe ? 'to' : 'from'} ${phoneNumber}, fromMe: ${fromMe}`);
+
+      // Update contact's last message time
+      // If fromMe=true: update last_message_from_us
+      // If fromMe=false: update last_message_time
+      let updateQuery;
+      if (fromMe) {
+        updateQuery = `
+          UPDATE contacts
+          SET last_message_from_us = CURRENT_TIMESTAMP,
+              message_count = COALESCE(message_count, 0) + 1
+          WHERE number = $1
+        `;
+      } else {
+        updateQuery = `
+          UPDATE contacts
+          SET last_message_time = CURRENT_TIMESTAMP,
+              message_count = COALESCE(message_count, 0) + 1
+          WHERE number = $1
+        `;
+      }
+
+      const updateResult = await db.query(updateQuery, [phoneNumber]);
+
+      if (updateResult.rowCount > 0) {
+        logger.info(`[Webhook] ✅ Updated ${fromMe ? 'last_message_from_us' : 'last_message_time'} for contact ${phoneNumber}`);
+      } else {
+        logger.warn(`[Webhook] ⚠️ Contact ${phoneNumber} not found in database, skipping update`);
+      }
+
+    } catch (error) {
+      logger.error(`[Webhook] Error processing message: ${error.message}`);
+      // Continue processing other messages even if one fails
+    }
   }
 }
 

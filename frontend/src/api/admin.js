@@ -36,11 +36,11 @@ export const adminAPI = {
   /**
    * Update consultant status (active/inactive)
    * @param {number} id - Consultant ID
-   * @param {Object} data - Status update data
+   * @param {Object} data - Status update data {isActive: boolean}
    * @returns {Promise} Updated consultant
    */
   updateConsultantStatus: async (id, data) => {
-    const response = await apiClient.put(`/admin/consultants/${id}/status`, data);
+    const response = await apiClient.put(`/admin/consultants/${id}`, data);
     return response.data;
   },
 

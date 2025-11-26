@@ -13,7 +13,7 @@ const pool = new Pool({
   user: process.env.DB_USER || 'campaign_user',
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'whatsapp_campaign',
-  max: 20, // Max client sayısı
+  max: 50, // Max client sayısı (400 instance için artırıldı)
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000
 });

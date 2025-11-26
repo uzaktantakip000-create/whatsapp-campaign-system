@@ -22,7 +22,6 @@ async function getAllContacts(req, res) {
     const {
       page = 1,
       limit = 20,
-      consultant_id,
       segment,
       search,
       sort = 'created_at',
@@ -36,11 +35,14 @@ async function getAllContacts(req, res) {
     let params = [];
     let paramCount = 1;
 
-    if (consultant_id) {
-      whereClause.push(`c.consultant_id = $${paramCount}`);
-      params.push(consultant_id);
-      paramCount++;
-    }
+    // ALWAYS filter by authenticated consultant's ID
+    const consultantId = req.user.id;
+    whereClause.push(`c.consultant_id = $${paramCount}`);
+    params.push(consultantId);
+    paramCount++;
+
+    // ALWAYS exclude deleted contacts (soft delete)
+    whereClause.push(`(c.is_deleted = false OR c.is_deleted IS NULL)`);
 
     if (segment) {
       whereClause.push(`c.segment = $${paramCount}`);
@@ -79,25 +81,28 @@ async function getAllContacts(req, res) {
 
     const result = await db.query(dataQuery, params);
 
-    // Format response
+    // Format response (camelCase)
     const contacts = result.rows.map(row => ({
       id: row.id,
       name: row.name,
+      phone: row.number,
+      whatsappNumber: row.number,
       number: row.number,
       segment: row.segment,
-      is_my_contact: row.is_my_contact,
-      profile_pic_url: row.profile_pic_url,
-      last_message_time: row.last_message_time,
-      last_message_from_us: row.last_message_from_us,
-      message_count: row.message_count,
-      complaint_count: row.complaint_count,
+      isMyContact: row.is_my_contact,
+      profilePicUrl: row.profile_pic_url,
+      lastMessageTime: row.last_message_time,
+      lastMessageFromUs: row.last_message_from_us,
+      lastMessageAt: row.last_message_from_us || row.last_message_time,
+      messageCount: row.message_count,
+      complaintCount: row.complaint_count,
       consultant: {
         id: row.consultant_id,
         name: row.consultant_name,
         email: row.consultant_email
       },
-      created_at: row.created_at,
-      updated_at: row.updated_at
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     }));
 
     logger.info(`[Contacts] Fetched ${contacts.length} contacts (page ${page})`);
@@ -178,28 +183,28 @@ async function getContactById(req, res) {
       name: row.name,
       number: row.number,
       segment: row.segment,
-      is_my_contact: row.is_my_contact,
-      profile_pic_url: row.profile_pic_url,
-      last_message_time: row.last_message_time,
-      last_message_from_us: row.last_message_from_us,
-      message_count: row.message_count,
-      complaint_count: row.complaint_count,
+      isMyContact: row.is_my_contact,
+      profilePicUrl: row.profile_pic_url,
+      lastMessageTime: row.last_message_time,
+      lastMessageFromUs: row.last_message_from_us,
+      messageCount: row.message_count,
+      complaintCount: row.complaint_count,
       stats: {
-        total_messages: parseInt(statsResult.rows[0].total_messages),
-        sent_messages: parseInt(statsResult.rows[0].sent_messages),
-        delivered_messages: parseInt(statsResult.rows[0].delivered_messages),
-        read_messages: parseInt(statsResult.rows[0].read_messages),
-        failed_messages: parseInt(statsResult.rows[0].failed_messages),
-        last_message_sent: statsResult.rows[0].last_message_sent
+        totalMessages: parseInt(statsResult.rows[0].total_messages) || 0,
+        sentMessages: parseInt(statsResult.rows[0].sent_messages) || 0,
+        deliveredMessages: parseInt(statsResult.rows[0].delivered_messages) || 0,
+        readMessages: parseInt(statsResult.rows[0].read_messages) || 0,
+        failedMessages: parseInt(statsResult.rows[0].failed_messages) || 0,
+        lastMessageSent: statsResult.rows[0].last_message_sent
       },
       consultant: {
         id: row.consultant_id,
         name: row.consultant_name,
         email: row.consultant_email,
-        instance_name: row.instance_name
+        instanceName: row.instance_name
       },
-      created_at: row.created_at,
-      updated_at: row.updated_at
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     };
 
     logger.info(`[Contacts] Fetched contact ${id}`);
@@ -230,7 +235,7 @@ async function getContactById(req, res) {
 async function createContact(req, res) {
   try {
     const {
-      consultant_id,
+      consultantId,
       name,
       number,
       segment = 'B',
@@ -240,7 +245,7 @@ async function createContact(req, res) {
     // Check if consultant exists
     const consultantCheck = await db.query(
       'SELECT id FROM consultants WHERE id = $1',
-      [consultant_id]
+      [consultantId]
     );
 
     if (consultantCheck.rows.length === 0) {
@@ -253,7 +258,7 @@ async function createContact(req, res) {
     // Check if contact already exists for this consultant
     const contactCheck = await db.query(
       'SELECT id FROM contacts WHERE consultant_id = $1 AND number = $2',
-      [consultant_id, number]
+      [consultantId, number]
     );
 
     if (contactCheck.rows.length > 0) {
@@ -273,7 +278,7 @@ async function createContact(req, res) {
     `;
 
     const result = await db.query(insertQuery, [
-      consultant_id,
+      consultantId,
       name,
       number,
       segment
@@ -686,16 +691,16 @@ async function importContacts(req, res) {
  */
 async function exportContacts(req, res) {
   try {
-    const { consultant_id, segment, search } = req.query;
+    const { consultantId, segment, search } = req.query;
 
     // Build query
     let whereClause = [];
     let params = [];
     let paramCount = 1;
 
-    if (consultant_id) {
+    if (consultantId) {
       whereClause.push(`c.consultant_id = $${paramCount}`);
-      params.push(consultant_id);
+      params.push(consultantId);
       paramCount++;
     }
 

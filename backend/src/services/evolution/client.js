@@ -211,32 +211,61 @@ class EvolutionClient {
   // ==========================================
 
   /**
-   * Fetch all contacts from instance
+   * Fetch all CHATS (not contacts) from instance
+   * CRITICAL: This fetches the chat list (sohbetler) NOT the contact list (rehber)
    * @param {string} instanceName - Instance name
-   * @returns {Promise<Array>} Array of contacts
+   * @returns {Promise<Array>} Array of chats (people you've messaged with)
    */
   async fetchContacts(instanceName) {
     try {
-      logger.info(`[Evolution] Fetching contacts for: ${instanceName}`);
+      logger.info(`[Evolution] Fetching CHATS (sohbetler, NOT contact list) for: ${instanceName}`);
 
-      const response = await this.client.get(`/chat/findContacts/${instanceName}`);
+      // Evolution API v2 - fetch chat list (sohbetler ekranı)
+      const response = await this.client.post(`/chat/findChats/${instanceName}`, {});
 
-      // Filter and format contacts
+      // Filter and format chats
       const contacts = response.data
-        .filter(c => !c.id.includes('@g.us')) // Exclude groups
-        .filter(c => c.isMyContact) // Only saved contacts
-        .map(c => ({
-          number: c.id.split('@')[0],
-          name: c.name || c.pushName || 'Unknown',
-          profilePicUrl: c.profilePicUrl || null,
-          isMyContact: c.isMyContact
-        }));
+        .filter(c => {
+          if (!c.remoteJid) return false;
+          if (c.remoteJid.includes('@g.us')) return false; // Exclude groups
 
-      logger.info(`[Evolution] Fetched ${contacts.length} contacts from ${instanceName}`);
+          const number = c.remoteJid.split('@')[0];
+          // Exclude invalid numbers (0, empty, null)
+          if (!number || number === '0' || number === 'null' || number.trim() === '') {
+            return false;
+          }
+
+          return true;
+        })
+        .map(c => {
+          const number = c.remoteJid.split('@')[0];
+
+          // Clean name: remove "None" strings and empty values
+          let name = null;
+          if (c.pushName && c.pushName !== 'None' && c.pushName.trim() !== '') {
+            name = c.pushName.trim();
+          } else if (c.name && c.name !== 'None' && c.name.trim() !== '') {
+            name = c.name.trim();
+          }
+
+          // If no name, use phone number as name
+          const finalName = name || number;
+
+          return {
+            number: number,
+            name: finalName,
+            profilePicUrl: c.profilePicUrl || null,
+            remoteJid: c.remoteJid,
+            createdAt: c.createdAt, // First message date
+            updatedAt: c.updatedAt  // Last message date
+          };
+        });
+
+      logger.info(`[Evolution] Fetched ${contacts.length} CHATS from ${instanceName} (chat list, NOT rehber)`);
       return contacts;
 
     } catch (error) {
-      logger.error(`[Evolution] Failed to fetch contacts for ${instanceName}: ${error.message}`);
+      logger.error(`[Evolution] Failed to fetch chats for ${instanceName}: ${error.message}`);
       throw error;
     }
   }

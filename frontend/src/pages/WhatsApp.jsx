@@ -231,10 +231,24 @@ function WhatsApp() {
                 <Box sx={{ mt: 3 }}>
                   <Alert severity="info" sx={{ mb: 2 }}>
                     <Typography variant="body2">
-                      Waiting for WhatsApp connection. Please scan the QR code with your phone.
+                      {qrCode
+                        ? 'Waiting for WhatsApp connection. Please scan the QR code with your phone.'
+                        : 'Connection pending but no QR code available. Please retry connection.'}
                     </Typography>
                   </Alert>
-                  <LinearProgress />
+                  <LinearProgress sx={{ mb: 2 }} />
+                  {!qrCode && (
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      fullWidth
+                      onClick={handleConnect}
+                      disabled={connectMutation.isPending}
+                      size="large"
+                    >
+                      {connectMutation.isPending ? 'Generating QR Code...' : 'Retry Connection'}
+                    </Button>
+                  )}
                 </Box>
               )}
 

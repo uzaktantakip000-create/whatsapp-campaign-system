@@ -59,11 +59,25 @@ async function getAllConsultants(req, res) {
 
     const result = await db.query(dataQuery, params);
 
-    logger.info(`[Consultants] Fetched ${result.rows.length} consultants (page ${page})`);
+    // Transform snake_case to camelCase
+    const consultants = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      instanceName: row.instance_name,
+      status: row.status,
+      dailyLimit: row.daily_limit,
+      spamRiskScore: row.spam_risk_score,
+      whatsappNumber: row.whatsapp_number,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+
+    logger.info(`[Consultants] Fetched ${consultants.length} consultants (page ${page})`);
 
     res.json({
       success: true,
-      data: result.rows,
+      data: consultants,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -123,10 +137,27 @@ async function getConsultantById(req, res) {
     `;
 
     const statsResult = await db.query(statsQuery, [id]);
+    const consultantRow = result.rows[0];
+    const statsRow = statsResult.rows[0];
 
     const consultant = {
-      ...result.rows[0],
-      stats: statsResult.rows[0]
+      id: consultantRow.id,
+      name: consultantRow.name,
+      email: consultantRow.email,
+      instanceName: consultantRow.instance_name,
+      status: consultantRow.status,
+      dailyLimit: consultantRow.daily_limit,
+      spamRiskScore: consultantRow.spam_risk_score,
+      whatsappNumber: consultantRow.whatsapp_number,
+      createdAt: consultantRow.created_at,
+      updatedAt: consultantRow.updated_at,
+      stats: {
+        totalContacts: parseInt(statsRow.total_contacts) || 0,
+        totalCampaigns: parseInt(statsRow.total_campaigns) || 0,
+        activeCampaigns: parseInt(statsRow.active_campaigns) || 0,
+        totalMessages: parseInt(statsRow.total_messages) || 0,
+        sentMessages: parseInt(statsRow.sent_messages) || 0
+      }
     };
 
     logger.info(`[Consultants] Fetched consultant ${id}`);
@@ -158,7 +189,7 @@ async function createConsultant(req, res) {
   const client = await db.pool.connect();
 
   try {
-    const { name, email, instance_name, daily_limit = 200, whatsapp_number } = req.body;
+    const { name, email, instanceName, dailyLimit = 200, whatsappNumber } = req.body;
 
     await client.query('BEGIN');
 
@@ -179,7 +210,7 @@ async function createConsultant(req, res) {
     // Check if instance_name already exists
     const instanceCheck = await client.query(
       'SELECT id FROM consultants WHERE instance_name = $1',
-      [instance_name]
+      [instanceName]
     );
 
     if (instanceCheck.rows.length > 0) {
@@ -200,9 +231,9 @@ async function createConsultant(req, res) {
     const result = await client.query(insertQuery, [
       name,
       email,
-      instance_name,
-      daily_limit,
-      whatsapp_number || null
+      instanceName,
+      dailyLimit,
+      whatsappNumber || null
     ]);
 
     await client.query('COMMIT');
@@ -212,7 +243,7 @@ async function createConsultant(req, res) {
     logger.info(`[Consultants] Created consultant ${consultant.id}: ${consultant.name}`);
 
     // Try to create Evolution API instance (async, don't wait)
-    createEvolutionInstance(consultant.id, instance_name).catch(err => {
+    createEvolutionInstance(consultant.id, instanceName).catch(err => {
       logger.error(`[Consultants] Failed to create Evolution instance for ${consultant.id}: ${err.message}`);
     });
 
@@ -246,7 +277,7 @@ async function createConsultant(req, res) {
 async function updateConsultant(req, res) {
   try {
     const { id } = req.params;
-    const { name, email, daily_limit, status, whatsapp_number } = req.body;
+    const { name, email, dailyLimit, status, whatsappNumber } = req.body;
 
     // Check if consultant exists
     const checkQuery = 'SELECT id FROM consultants WHERE id = $1';
@@ -276,9 +307,9 @@ async function updateConsultant(req, res) {
       paramCount++;
     }
 
-    if (daily_limit !== undefined) {
+    if (dailyLimit !== undefined) {
       updates.push(`daily_limit = $${paramCount}`);
-      params.push(daily_limit);
+      params.push(dailyLimit);
       paramCount++;
     }
 
@@ -288,9 +319,9 @@ async function updateConsultant(req, res) {
       paramCount++;
     }
 
-    if (whatsapp_number !== undefined) {
+    if (whatsappNumber !== undefined) {
       updates.push(`whatsapp_number = $${paramCount}`);
-      params.push(whatsapp_number || null);
+      params.push(whatsappNumber || null);
       paramCount++;
     }
 
@@ -620,10 +651,10 @@ async function toggleWarmup(req, res) {
 async function resetWarmup(req, res) {
   try {
     const { id } = req.params;
-    const { start_date } = req.body;
+    const { startDate } = req.body;
     const WarmupService = require('../services/warmup/warmupService');
 
-    const result = await WarmupService.resetWarmupDate(id, start_date);
+    const result = await WarmupService.resetWarmupDate(id, startDate);
 
     logger.info(`[Consultants] Warm-up reset for consultant ${id}`);
 
@@ -650,19 +681,19 @@ async function resetWarmup(req, res) {
 async function getWarmupSchedule(req, res) {
   try {
     const { id } = req.params;
-    const { total_messages } = req.body;
+    const { totalMessages } = req.body;
     const WarmupService = require('../services/warmup/warmupService');
 
-    if (!total_messages || total_messages < 1) {
+    if (!totalMessages || totalMessages < 1) {
       return res.status(400).json({
         success: false,
-        error: 'total_messages must be a positive number'
+        error: 'totalMessages must be a positive number'
       });
     }
 
-    const schedule = await WarmupService.getRecommendedSchedule(id, total_messages);
+    const schedule = await WarmupService.getRecommendedSchedule(id, totalMessages);
 
-    logger.info(`[Consultants] Generated schedule for ${total_messages} messages for consultant ${id}`);
+    logger.info(`[Consultants] Generated schedule for ${totalMessages} messages for consultant ${id}`);
 
     res.json({
       success: true,
@@ -716,18 +747,26 @@ async function getConsultantDashboard(req, res) {
       email: consultant.email,
       phone: consultant.phone,
       status: consultant.status,
-      instance_name: consultant.instance_name,
-      whatsapp_number: consultant.whatsapp_number,
-      connected_at: consultant.connected_at,
-      last_active_at: consultant.last_active_at
+      instanceName: consultant.instance_name,
+      whatsappNumber: consultant.whatsapp_number,
+      connectedAt: consultant.connected_at,
+      lastActiveAt: consultant.last_active_at
     };
 
     res.json({
       success: true,
       data: {
         consultant: consultantInfo,
-        stats: stats,
-        recent_campaigns: recentCampaigns
+        stats: {
+          whatsappStatus: consultant.status,
+          totalContacts: stats.contacts_count,
+          totalCampaigns: stats.campaigns_count,
+          messagesSentToday: stats.messages_sent_today,
+          totalMessagesSent: stats.messages_sent_total,
+          readRate: stats.read_rate,
+          warmupStatus: stats.warmup_status
+        },
+        recentCampaigns: recentCampaigns
       }
     });
 
@@ -811,13 +850,15 @@ async function getDashboardStats(consultantId) {
       const warmupStatus = await WarmupService.getCurrentLimit(consultantId);
 
       stats.warmup_status = {
-        phase: warmupStatus.phase,
-        current_limit: warmupStatus.limit,
-        messages_sent_today: stats.messages_sent_today,
-        percentage_used: warmupStatus.limit > 0
+        currentPhase: warmupStatus.phase,
+        currentDailyLimit: warmupStatus.limit,
+        messagesSentToday: stats.messages_sent_today,
+        percentageUsed: warmupStatus.limit > 0
           ? ((stats.messages_sent_today / warmupStatus.limit) * 100).toFixed(1)
           : 0,
-        remaining: Math.max(0, warmupStatus.limit - stats.messages_sent_today)
+        messagesRemaining: Math.max(0, warmupStatus.limit - stats.messages_sent_today),
+        isActive: true,
+        daysInPhase: warmupStatus.daysInPhase || 0
       };
       stats.daily_limit = warmupStatus.limit;
     } else {
@@ -858,6 +899,12 @@ async function getRecentCampaigns(consultantId, limit = 5) {
       id: campaign.id,
       name: campaign.name,
       status: campaign.status,
+      totalRecipients: campaign.total_recipients || 0,
+      messagesSent: campaign.sent_count || 0,
+      messagesDelivered: campaign.delivered_count || 0,
+      messagesRead: campaign.read_count || 0,
+      repliesReceived: campaign.reply_count || 0,
+      messagesFailed: campaign.failed_count || 0,
       progress: {
         total: campaign.total_recipients || 0,
         sent: campaign.sent_count || 0,
@@ -866,9 +913,9 @@ async function getRecentCampaigns(consultantId, limit = 5) {
         replied: campaign.reply_count || 0,
         failed: campaign.failed_count || 0
       },
-      started_at: campaign.started_at,
-      completed_at: campaign.completed_at,
-      created_at: campaign.created_at
+      startedAt: campaign.started_at,
+      completedAt: campaign.completed_at,
+      createdAt: campaign.created_at
     }));
 
   } catch (error) {

@@ -1,52 +1,84 @@
-# WhatsApp Campaign Management System
+# 🚀 WhatsApp Campaign Management System
 
 Professional WhatsApp bulk messaging platform with Evolution API integration, warmup system, and comprehensive campaign management.
 
-## 🎯 Overview
+---
 
-Full-stack WhatsApp marketing solution featuring:
-- Multi-user system (Admin & Consultants)
-- Evolution API WhatsApp integration
-- Intelligent warmup to prevent blocks
-- Template & campaign management
-- Contact management with CSV import/export
-- Real-time monitoring & statistics
-- Modern React dashboard
+## ⚡ **HIZLI KURULUM** (3 Adımda - Programlama Bilgisi Gerektirmez!)
 
-## 🚀 Quick Start
+### **Gereksinimler** (Sadece bir kere yükleyin)
 
-### Prerequisites
-- Node.js >= 18.x
-- PostgreSQL >= 14.x
-- Evolution API instance (optional)
+| Windows | Mac/Linux |
+|---------|-----------|
+| [Docker Desktop](https://www.docker.com/products/docker-desktop) | [Docker](https://www.docker.com/get-started) |
+| [Node.js v18+](https://nodejs.org) | [Node.js v18+](https://nodejs.org) |
 
-### Setup
+### **Kurulum** (Tek Komut!)
 
-```bash
-# 1. Environment setup
-cp .env.example .env
-# Edit .env with your credentials
-
-# 2. Database
-createdb whatsapp_campaign
-psql -d whatsapp_campaign -f database/schema.sql
-
-# 3. Backend
-cd backend
-npm install
-npm start
-# Runs on http://localhost:3000
-
-# 4. Frontend
-cd frontend
-npm install
-npm run dev
-# Runs on http://localhost:5173
+**Windows:**
+```cmd
+setup.bat
 ```
 
-### Docker Setup (Recommended)
+**Mac/Linux:**
+```bash
+bash setup.sh
+```
+
+### **Kullanıma Başlayın**
+
+1. Tarayıcınızda açın: **http://localhost:5173**
+2. Giriş yapın:
+   - Email: `demo@example.com`
+   - Şifre: `demo123`
+3. WhatsApp bağlayın ve mesaj göndermeye başlayın!
+
+📖 **Detaylı Rehber:** [QUICK-START.md](QUICK-START.md)
+🔧 **Sorun mu Var?** [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
+---
+
+## 🎯 Özellikler
+
+✅ **Otomatik Kurulum** - Tek komutla hazır
+✅ **WhatsApp QR Bağlantısı** - Anında bağlan
+✅ **Akıllı Warmup** - Spam koruması
+✅ **Kampanya Yönetimi** - Toplu mesaj gönderimi
+✅ **Contact Sync** - Otomatik kişi senkronizasyonu
+✅ **Admin Paneli** - Çoklu kullanıcı yönetimi
+✅ **Real-time Updates** - Canlı istatistikler
+✅ **Responsive Design** - Mobil uyumlu
+
+---
+
+## 🛠️ Kolay Komutlar
+
+| Komut | Açıklama |
+|-------|----------|
+| `npm run start` | Sistemi başlat |
+| `npm run stop` | Sistemi durdur |
+| `npm run health` | Sistem kontrolü |
+| `npm run seed` | Demo verileri yükle |
+| `npm run backup` | Yedek al |
+| `npm run update` | Güvenli güncelleme |
+
+---
+
+## 📚 Dokümantasyon
+
+- 🚀 [Hızlı Başlangıç](QUICK-START.md) - İlk kez kullananlar için
+- 🔧 [Sorun Giderme](TROUBLESHOOTING.md) - Yaygın sorunlar ve çözümleri
+- 🚢 [Deployment](DEPLOYMENT.md) - Production kurulumu
+- 📖 [API Docs](http://localhost:3000/api-docs) - Swagger API dokümantasyonu
+
+---
+
+## 💻 Manuel Kurulum (Geliştiriciler İçin)
+
+### Docker ile (Önerilen)
 
 ```bash
+# Tek komut
 docker-compose up -d
 ```
 

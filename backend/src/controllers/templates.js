@@ -20,9 +20,9 @@ async function getAllTemplates(req, res) {
     const {
       page = 1,
       limit = 20,
-      consultant_id,
+      consultantId,
       category,
-      is_active,
+      isActive,
       search,
       sort = 'created_at',
       order = 'desc'
@@ -35,9 +35,9 @@ async function getAllTemplates(req, res) {
     let params = [];
     let paramCount = 1;
 
-    if (consultant_id) {
+    if (consultantId) {
       whereClause.push(`consultant_id = $${paramCount}`);
-      params.push(consultant_id);
+      params.push(consultantId);
       paramCount++;
     }
 
@@ -47,9 +47,9 @@ async function getAllTemplates(req, res) {
       paramCount++;
     }
 
-    if (is_active !== undefined) {
+    if (isActive !== undefined) {
       whereClause.push(`is_active = $${paramCount}`);
-      params.push(is_active === 'true' || is_active === true);
+      params.push(isActive === 'true' || isActive === true);
       paramCount++;
     }
 
@@ -80,10 +80,18 @@ async function getAllTemplates(req, res) {
 
     const result = await db.query(dataQuery, params);
 
-    // Parse JSONB fields
+    // Transform to camelCase
     const templates = result.rows.map(template => ({
-      ...template,
-      variables: typeof template.variables === 'string' ? JSON.parse(template.variables) : template.variables
+      id: template.id,
+      consultantId: template.consultant_id,
+      name: template.name,
+      content: template.content,
+      category: template.category,
+      variables: typeof template.variables === 'string' ? JSON.parse(template.variables) : template.variables,
+      isActive: template.is_active,
+      usageCount: template.usage_count,
+      createdAt: template.created_at,
+      updatedAt: template.updated_at
     }));
 
     logger.info(`[Templates] Fetched ${templates.length} templates (page ${page})`);
@@ -173,11 +181,11 @@ async function getTemplateById(req, res) {
 async function createTemplate(req, res) {
   try {
     const {
-      consultant_id,
+      consultantId,
       name,
       content,
       category,
-      is_active = true
+      isActive = true
     } = req.body;
 
     // Validate template content
@@ -196,7 +204,7 @@ async function createTemplate(req, res) {
     // Check if consultant exists
     const consultantCheck = await db.query(
       'SELECT id FROM consultants WHERE id = $1',
-      [consultant_id]
+      [consultantId]
     );
 
     if (consultantCheck.rows.length === 0) {
@@ -209,7 +217,7 @@ async function createTemplate(req, res) {
     // Check for duplicate name
     const duplicateCheck = await db.query(
       'SELECT id FROM message_templates WHERE consultant_id = $1 AND name = $2',
-      [consultant_id, name]
+      [consultantId, name]
     );
 
     if (duplicateCheck.rows.length > 0) {
@@ -229,12 +237,12 @@ async function createTemplate(req, res) {
     `;
 
     const result = await db.query(insertQuery, [
-      consultant_id,
+      consultantId,
       name,
       content,
       category,
       JSON.stringify(variables),
-      is_active
+      isActive
     ]);
 
     const template = result.rows[0];
@@ -276,7 +284,7 @@ async function updateTemplate(req, res) {
       name,
       content,
       category,
-      is_active
+      isActive
     } = req.body;
 
     // Check if template exists
@@ -331,9 +339,9 @@ async function updateTemplate(req, res) {
       paramCount++;
     }
 
-    if (is_active !== undefined) {
+    if (isActive !== undefined) {
       updates.push(`is_active = $${paramCount}`);
-      params.push(is_active);
+      params.push(isActive);
       paramCount++;
     }
 
@@ -458,10 +466,10 @@ async function previewTemplate(req, res) {
     res.json({
       success: true,
       data: {
-        template_id: id,
+        templateId: id,
         original: template.content,
         preview: preview,
-        variables_used: TemplateEngine.extractVariables(template.content)
+        variablesUsed: TemplateEngine.extractVariables(template.content)
       }
     });
 
@@ -522,7 +530,7 @@ async function renderTemplate(req, res) {
     res.json({
       success: true,
       data: {
-        template_id: id,
+        templateId: id,
         rendered: rendered
       }
     });
@@ -607,9 +615,9 @@ async function generateVariations(req, res) {
     res.json({
       success: true,
       data: {
-        template_id: id,
-        template_name: template.name,
-        base_message: baseMessage,
+        templateId: id,
+        templateName: template.name,
+        baseMessage: baseMessage,
         variations: variationResult.variations,
         count: variationResult.variations.length,
         tone: tone,
@@ -691,8 +699,8 @@ async function improveTemplate(req, res) {
     res.json({
       success: true,
       data: {
-        template_id: id,
-        template_name: template.name,
+        templateId: id,
+        templateName: template.name,
         original: improvementResult.original,
         improved: improvementResult.improved,
         tone: tone,

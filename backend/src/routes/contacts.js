@@ -19,6 +19,7 @@ const { requireAuth } = require('../middleware/auth');
 // ==========================================
 router.get(
   '/',
+  requireAuth,
   validateQuery(contactQuerySchema),
   contactsController.getAllContacts
 );
@@ -30,6 +31,7 @@ router.get(
 // ==========================================
 router.get(
   '/export',
+  requireAuth,
   validateQuery(contactQuerySchema),
   contactsController.exportContacts
 );
@@ -40,6 +42,7 @@ router.get(
 // ==========================================
 router.get(
   '/:id',
+  requireAuth,
   validateParams('id'),
   contactsController.getContactById
 );
@@ -50,6 +53,7 @@ router.get(
 // ==========================================
 router.post(
   '/',
+  requireAuth,
   validateBody(createContactSchema),
   contactsController.createContact
 );
@@ -61,6 +65,7 @@ router.post(
 // ==========================================
 router.post(
   '/import',
+  requireAuth,
   upload.single('file'),
   contactsController.importContacts
 );
@@ -123,6 +128,7 @@ router.post(
 // ==========================================
 router.put(
   '/:id',
+  requireAuth,
   validateParams('id'),
   validateBody(updateContactSchema),
   contactsController.updateContact
@@ -134,6 +140,7 @@ router.put(
 // ==========================================
 router.delete(
   '/:id',
+  requireAuth,
   validateParams('id'),
   contactsController.deleteContact
 );

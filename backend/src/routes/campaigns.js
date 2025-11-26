@@ -80,4 +80,35 @@ router.post(
   campaignsController.pauseCampaign
 );
 
+// ==========================================
+// POST /api/campaigns/:id/recipients
+// Add recipients to campaign
+// ==========================================
+router.post(
+  '/:id/recipients',
+  validateParams('id'),
+  campaignsController.addRecipients
+);
+
+// ==========================================
+// GET /api/campaigns/:id/recipients
+// Get campaign recipients
+// ==========================================
+router.get(
+  '/:id/recipients',
+  validateParams('id'),
+  campaignsController.getCampaignRecipients
+);
+
+// ==========================================
+// DELETE /api/campaigns/:id/recipients/:contactId
+// Remove recipient from campaign
+// ==========================================
+router.delete(
+  '/:id/recipients/:contactId',
+  validateParams('id'),
+  validateParams('contactId'),
+  campaignsController.removeRecipient
+);
+
 module.exports = router;

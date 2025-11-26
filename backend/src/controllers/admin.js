@@ -17,7 +17,30 @@ const logger = require('../utils/logger');
  */
 async function getAllConsultantsAdmin(req, res) {
   try {
-    logger.info('[Admin] Fetching all consultants with stats');
+    const { status, search, page = 1, limit = 10 } = req.query;
+
+    logger.info('[Admin] Fetching all consultants with stats', { status, search, page, limit });
+
+    // Build WHERE clause
+    let whereConditions = ["c.role = 'consultant'"];
+    const queryParams = [];
+    let paramCount = 1;
+
+    // Filter by is_active (status: active/inactive)
+    if (status === 'active') {
+      whereConditions.push('c.is_active = true');
+    } else if (status === 'inactive') {
+      whereConditions.push('c.is_active = false');
+    }
+
+    // Search by name or email
+    if (search) {
+      whereConditions.push(`(c.name ILIKE $${paramCount} OR c.email ILIKE $${paramCount})`);
+      queryParams.push(`%${search}%`);
+      paramCount++;
+    }
+
+    const whereClause = whereConditions.join(' AND ');
 
     const query = `
       SELECT
@@ -52,31 +75,31 @@ async function getAllConsultantsAdmin(req, res) {
         -- Campaign count
         (SELECT COUNT(*) FROM campaigns WHERE consultant_id = c.id) as campaigns_count
       FROM consultants c
-      WHERE c.role = 'consultant'
+      WHERE ${whereClause}
       ORDER BY c.created_at DESC
     `;
 
-    const result = await db.query(query);
+    const result = await db.query(query, queryParams);
 
     const consultants = result.rows.map(row => ({
       id: row.id,
       name: row.name,
       email: row.email,
       phone: row.phone,
-      instance_name: row.instance_name,
-      whatsapp_number: row.whatsapp_number,
+      instanceName: row.instance_name,
+      whatsappNumber: row.whatsapp_number,
       status: row.status,
-      is_active: row.is_active,
-      daily_limit: row.daily_limit,
-      spam_risk_score: row.spam_risk_score,
-      connected_at: row.connected_at,
-      last_active_at: row.last_active_at,
-      created_at: row.created_at,
+      isActive: row.is_active,
+      dailyLimit: row.daily_limit,
+      spamRiskScore: row.spam_risk_score,
+      connectedAt: row.connected_at,
+      lastActiveAt: row.last_active_at,
+      createdAt: row.created_at,
       stats: {
-        contacts_count: parseInt(row.contacts_count) || 0,
-        messages_sent_today: parseInt(row.messages_sent_today) || 0,
-        total_messages: parseInt(row.total_messages) || 0,
-        campaigns_count: parseInt(row.campaigns_count) || 0
+        contactsCount: parseInt(row.contacts_count) || 0,
+        messagesSentToday: parseInt(row.messages_sent_today) || 0,
+        totalMessages: parseInt(row.total_messages) || 0,
+        campaignsCount: parseInt(row.campaigns_count) || 0
       }
     }));
 
@@ -109,9 +132,9 @@ async function getSystemStats(req, res) {
   try {
     logger.info('[Admin] Fetching system statistics');
 
-    // Total consultants
+    // Total consultants (using is_active for consultant account status)
     const consultantsResult = await db.query(
-      "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'active') as active FROM consultants WHERE role = 'consultant'"
+      "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE is_active = true) as active FROM consultants WHERE role = 'consultant'"
     );
 
     // Total contacts
@@ -125,8 +148,25 @@ async function getSystemStats(req, res) {
       FROM messages
     `);
 
-    // Total campaigns
-    const campaignsResult = await db.query("SELECT COUNT(*) FROM campaigns");
+    // Total campaigns (total and running)
+    const campaignsResult = await db.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status = 'running') as running
+      FROM campaigns
+    `);
+
+    // WhatsApp connections (only consultants with actual WhatsApp connection)
+    // A consultant is considered "connected" only if they have both:
+    // 1. A WhatsApp number (whatsapp_number IS NOT NULL)
+    // 2. A connected timestamp (connected_at IS NOT NULL)
+    const whatsappResult = await db.query(`
+      SELECT COUNT(*) as connected
+      FROM consultants
+      WHERE role = 'consultant'
+        AND whatsapp_number IS NOT NULL
+        AND connected_at IS NOT NULL
+    `);
 
     // Average spam risk
     const spamRiskResult = await db.query(
@@ -142,13 +182,17 @@ async function getSystemStats(req, res) {
         total: parseInt(contactsResult.rows[0].count) || 0
       },
       messages: {
-        sent_today: parseInt(messagesResult.rows[0].today) || 0,
-        sent_total: parseInt(messagesResult.rows[0].total) || 0
+        sentToday: parseInt(messagesResult.rows[0].today) || 0,
+        sentTotal: parseInt(messagesResult.rows[0].total) || 0
       },
       campaigns: {
-        total: parseInt(campaignsResult.rows[0].count) || 0
+        total: parseInt(campaignsResult.rows[0].total) || 0,
+        running: parseInt(campaignsResult.rows[0].running) || 0
       },
-      spam_risk: {
+      whatsapp: {
+        connected: parseInt(whatsappResult.rows[0].connected) || 0
+      },
+      spamRisk: {
         average: parseFloat(spamRiskResult.rows[0].avg_risk) || 0
       }
     };
@@ -184,15 +228,22 @@ async function updateConsultantAdmin(req, res) {
 
     logger.info(`[Admin] Updating consultant ${id}`);
 
-    // Allowed fields for admin update
-    const allowedFields = ['is_active', 'daily_limit', 'spam_risk_score', 'status'];
+    // Map camelCase to snake_case for database
+    const fieldMapping = {
+      'isActive': 'is_active',
+      'dailyLimit': 'daily_limit',
+      'spamRiskScore': 'spam_risk_score',
+      'status': 'status'
+    };
+
     const updateFields = [];
     const values = [];
     let paramCount = 1;
 
     for (const [key, value] of Object.entries(updates)) {
-      if (allowedFields.includes(key)) {
-        updateFields.push(`${key} = $${paramCount}`);
+      const dbField = fieldMapping[key];
+      if (dbField) {
+        updateFields.push(`${dbField} = $${paramCount}`);
         values.push(value);
         paramCount++;
       }
@@ -202,7 +253,7 @@ async function updateConsultantAdmin(req, res) {
       return res.status(400).json({
         success: false,
         error: 'No valid fields to update',
-        allowed_fields: allowedFields
+        allowedFields: Object.keys(fieldMapping)
       });
     }
 
@@ -230,10 +281,19 @@ async function updateConsultantAdmin(req, res) {
 
     logger.info(`[Admin] Consultant ${id} updated successfully`);
 
+    const consultant = result.rows[0];
     res.json({
       success: true,
       message: 'Consultant updated successfully',
-      data: result.rows[0]
+      data: {
+        id: consultant.id,
+        name: consultant.name,
+        email: consultant.email,
+        status: consultant.status,
+        isActive: consultant.is_active,
+        dailyLimit: consultant.daily_limit,
+        spamRiskScore: consultant.spam_risk_score
+      }
     });
 
   } catch (error) {

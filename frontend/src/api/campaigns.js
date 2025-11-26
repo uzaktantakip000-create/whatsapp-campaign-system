@@ -66,12 +66,55 @@ export const campaignsAPI = {
   },
 
   /**
-   * Stop campaign
+   * Pause campaign (renamed from stopCampaign to match backend)
+   * @param {number} id - Campaign ID
+   * @returns {Promise} Pause response
+   */
+  pauseCampaign: async (id) => {
+    const response = await apiClient.post(`/campaigns/${id}/pause`);
+    return response.data;
+  },
+
+  /**
+   * Stop campaign (alias for pauseCampaign for backward compatibility)
    * @param {number} id - Campaign ID
    * @returns {Promise} Stop response
    */
   stopCampaign: async (id) => {
-    const response = await apiClient.post(`/campaigns/${id}/stop`);
+    const response = await apiClient.post(`/campaigns/${id}/pause`);
+    return response.data;
+  },
+
+  /**
+   * Add recipients to campaign
+   * @param {number} id - Campaign ID
+   * @param {Object} data - Recipients data (contactIds or segmentFilter)
+   * @returns {Promise} Add recipients response
+   */
+  addRecipients: async (id, data) => {
+    const response = await apiClient.post(`/campaigns/${id}/recipients`, data);
+    return response.data;
+  },
+
+  /**
+   * Get campaign recipients
+   * @param {number} id - Campaign ID
+   * @param {Object} params - Query parameters (page, limit, status)
+   * @returns {Promise} Recipients list
+   */
+  getCampaignRecipients: async (id, params = {}) => {
+    const response = await apiClient.get(`/campaigns/${id}/recipients`, { params });
+    return response.data;
+  },
+
+  /**
+   * Remove recipient from campaign
+   * @param {number} id - Campaign ID
+   * @param {number} contactId - Contact ID
+   * @returns {Promise} Remove recipient response
+   */
+  removeRecipient: async (id, contactId) => {
+    const response = await apiClient.delete(`/campaigns/${id}/recipients/${contactId}`);
     return response.data;
   },
 

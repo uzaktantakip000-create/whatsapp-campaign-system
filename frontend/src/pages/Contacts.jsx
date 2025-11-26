@@ -96,8 +96,8 @@ function Contacts() {
     }),
   });
 
-  const contacts = data?.data?.contacts || [];
-  const totalCount = data?.data?.total || 0;
+  const contacts = data?.data || [];
+  const totalCount = data?.pagination?.total || 0;
 
   // Sync mutation
   const syncMutation = useMutation({

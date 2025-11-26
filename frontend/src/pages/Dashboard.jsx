@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Box,
@@ -59,12 +59,17 @@ function Dashboard() {
       const hasRunningCampaigns = recentCampaigns.some(
         (campaign) => campaign.status === 'running'
       );
-      // Update timestamp on successful fetch
-      setLastUpdate(new Date());
       // Refresh every 10 seconds if there are running campaigns, otherwise every 30 seconds
       return hasRunningCampaigns ? 10000 : 30000;
     },
   });
+
+  // Update timestamp whenever data changes
+  useEffect(() => {
+    if (data) {
+      setLastUpdate(new Date());
+    }
+  }, [data]);
 
   const handleManualRefresh = () => {
     refetch();
@@ -94,8 +99,9 @@ function Dashboard() {
     );
   }
 
+  const consultant = data?.data?.consultant || {};
   const stats = data?.data?.stats || {};
-  const warmup = data?.data?.warmup || {};
+  const warmup = stats?.warmupStatus || {};
   const recentCampaigns = data?.data?.recentCampaigns || [];
   const charts = data?.data?.charts || {};
 
